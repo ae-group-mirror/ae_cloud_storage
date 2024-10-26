@@ -1,0 +1,6 @@
+# google-auth not explicitely needed, because is required by each of the 3 following Google packages
+google-auth-oauthlib
+google-auth-httplib2
+google-api-python-client
+requests
+ae_base
