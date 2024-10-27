@@ -1,8 +1,14 @@
-""" distribute to and retrieve files from cloud storage hosts
+""" distribute files to and retrieve them from cloud storage hosts.
 
 supported cloud storage hosts:
-- Google Drive: https://developers.google.com/drive/api/guides/about-sdk
-- DigiStorage: https://storage.rcs-rds.ro/help/developers
+* Google Drive: https://developers.google.com/drive/api/guides/about-sdk
+* DigiStorage: https://storage.rcs-rds.ro/help/developers
+
+a comparison of cloud storage hosts, including free ones, can be found here: https://comparisontabl.es/cloud-storage/
+(or https://docs.google.com/spreadsheets/d/1cEd65XDW3gBHnRsJ0rbq3V_B28mKySHiMPAZvArHiiA/).
+but not all of them offer an API, see some recommendations in:
+* https://blog.apilayer.com/5-cloud-storage-apis/#Filestack_API
+* https://www.jsonapi.co/public-api/category/Cloud%20Storage%20&%20File%20Sharing
 
 """
 import io
@@ -16,31 +22,30 @@ from typing import Any, Optional, Type, Union
 import requests
 
 from google.auth.transport.requests import Request
-from google_auth_oauthlib.flow import InstalledAppFlow                      # type: ignore
+from google_auth_oauthlib.flow import InstalledAppFlow                                          # type: ignore
 from google.oauth2 import service_account
 from google.oauth2.credentials import Credentials
 
-from googleapiclient.discovery import build                                 # type: ignore
-from googleapiclient.errors import HttpError                                # type: ignore
-from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload       # type: ignore
+from googleapiclient.discovery import build                                                     # type: ignore
+from googleapiclient.errors import HttpError                                                    # type: ignore
+from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload                           # type: ignore
 
-from ae.base import read_file, ErrorMsgMixin                                # type: ignore
-
-
-__version__ = '0.3.1'
+from ae.base import os_path_basename, os_path_isfile, os_path_join, read_file, ErrorMsgMixin    # type: ignore
 
 
-GOOGLE_DRIVE_DEFAULT_ROOT_FOLDER = 'root'
-
-GoodriveRequestReturnType = dict[str, Any]
+__version__ = '0.3.2'
 
 
 _registered_csh_classes = {}  #: cloud storage class ids map to their related api classes, used by :func:`csh_api_class`
 
 
 class CshApiBase(ErrorMsgMixin, ABC):
-    def __init__(self, **kwargs):
-        """ declared to hide 'Unexpected argument' inspection warning in :meth:`ae.oaio_client.OaioClient._csh_api` """
+    def __init__(self, **csh_args):
+        """ cloud storage host api instantiation and argument check.
+
+        :param csh_args:        individual arguments, like host root path and credentials, of a cloud storage host api.
+        """
+        assert not csh_args, f"abstract CshApiBase.__init__() got unrecognized kwargs: {csh_args}"
 
     def __init_subclass__(cls):     #: base class to automatic map of cloud storage api classes declared in this module
         super().__init_subclass__()
@@ -51,7 +56,7 @@ class CshApiBase(ErrorMsgMixin, ABC):
     def deployed_file_content(self, file_path: str) -> Optional[bytes]:
         """ determine the file content of a file deployed to a server.
 
-        :param file_path:       path of a deployed file relative to the project root.
+        :param file_path:       path of a deployed file relative to the host root.
         :return:                file content as bytes or None if error occurred (check self.error_message).
         """
 
@@ -59,7 +64,7 @@ class CshApiBase(ErrorMsgMixin, ABC):
     def deploy_file(self, file_path: str, source_path: str = '') -> str:
         """ add or update a binary file to the cloud storage host.
 
-        :param file_path:       path (relative to the oaio root) and name of the file to be deployed (added or updated).
+        :param file_path:       path (relative to the host root) and name of the file to be deployed (added or updated).
         :param source_path:     source path if differs from the destination path given in :paramref:`.folder_path`.
         :return:                created/updated file path or empty string on error (see self.error_message for details).
         """
@@ -68,7 +73,7 @@ class CshApiBase(ErrorMsgMixin, ABC):
     def delete_file_or_folder(self, file_path: str) -> str:
         """ delete a file or folder on the cloud storage host.
 
-        :param file_path:       path relative to the oaio root of the file/folder to be deleted.
+        :param file_path:       path relative to the host root of the file/folder to be deleted.
                                 to delete a folder a trailing slash character has to be added.
                                 .. note:: deleting a folder will also delete all files/folders underneath it.
         :return:                error message if deletion failed else on success an empty string.
@@ -90,10 +95,16 @@ class DigiApi(CshApiBase):
     the requests package is the only requirement of this class, which can be installed via `pip install requests`.
 
     """
-    def __init__(self, email: str, password: str, **kwargs):
-        super().__init__(**kwargs)
+    def __init__(self, root_folder: str = "", email: str = "", password: str = "", **csh_args):
+        """ DigiStorage host instantiation.
+
+        :param root_folder:     host root folder name/path.
+        :param email:           host account email address to authenticate.
+        :param password:        host account password to authenticate.
+        :param csh_args:        generic cloud storage host arguments.
+        """
+        super().__init__(**csh_args)
         self.base_url = 'https://digistorage.es'
-        api_prefix = '/api/v2/mounts'
         self.session = requests.Session()
         token = self.session.get(self.base_url + '/token',
                                  headers={
@@ -102,9 +113,16 @@ class DigiApi(CshApiBase):
                                  }).headers['X-Koofr-Token']
         self.session.headers['Authorization'] = 'Token ' + token
 
+        api_prefix = '/api/v2/mounts'
         res = self.session.get(self.base_url + api_prefix).json()
         mount = [x for x in res['mounts'] if x['name'] == 'DIGIstorage'][0]
         self.files_mount_id = api_prefix + '/' + mount['id'] + '/files/'
+
+        self.root_folder = ""
+        if root_folder:
+            self._create_dirs(root_folder)  # create root folder if not exists
+            self.error_message = ""         # ignore and reset error of root folder already exists
+            self.root_folder = root_folder  # root folder instance var can be set NOW, to prevent access outside of it
 
     def _create_dirs(self, folder_path: str) -> str:
         if '//' in folder_path:
@@ -128,7 +146,7 @@ class DigiApi(CshApiBase):
 
     def _request(self, method: str, slug: str, path: str, **kwargs) -> Optional[requests.Response]:
         url = self.base_url + slug
-        kwargs['params'] = {'path': path}
+        kwargs['params'] = {'path': os_path_join(self.root_folder, path.lstrip('/'))}
         try:
             met = getattr(self.session, method)
             res = met(url, **kwargs)
@@ -142,18 +160,19 @@ class DigiApi(CshApiBase):
     def deployed_file_content(self, file_path: str) -> Optional[bytes]:
         """ determine the file content of a file deployed to a server.
 
-        :param file_path:       path of a deployed file relative to the project root.
+        :param file_path:       path of a deployed file relative to the host root path.
         :return:                file content as bytes or None if error occurred (check self.error_message).
         """
         res = self._request('get', '/content' + self.files_mount_id + 'get', file_path)
         if res:
             return res.content
+
         return None
 
     def deploy_file(self, file_path: str, source_path: str = '') -> str:
         """ add or update a binary file to the cloud storage host.
 
-        :param file_path:       path (relative to the oaio root) and name of the file to be deployed (added or updated).
+        :param file_path:       path (relative to the host root) and name of the file to be deployed (added or updated).
         :param source_path:     source path if differs from the destination path given in :paramref:`.folder_path`.
         :return:                created/updated file path or empty string on error (see self.error_message for details).
         """
@@ -189,7 +208,7 @@ class DigiApi(CshApiBase):
     def delete_file_or_folder(self, file_path: str) -> str:
         """ delete a file or folder on the cloud storage host.
 
-        :param file_path:       path relative to the oaio root of the file/folder to be deleted.
+        :param file_path:       path relative to the host root of the file/folder to be deleted.
                                 to delete a folder a trailing slash character has to be added.
                                 .. note:: deleting a folder will also delete all files/folders underneath it.
         :return:                error message if deletion failed else on success an empty string.
@@ -200,7 +219,7 @@ class DigiApi(CshApiBase):
     def list_dir(self, folder_path: str) -> Optional[list[str]]:
         """ determine files and folders in the specified folder.
 
-        :param folder_path:     path to the folder to determine items of.
+        :param folder_path:     path to the folder (relative to the host root folder) to determine items of.
         :return:                list of files/folders names in the specified folder (sub-folders have a trailing slash)
                                 or None if the folder does not exist.
         """
@@ -218,7 +237,7 @@ class DigiApi(CshApiBase):
 class GoodriveApi(CshApiBase, ErrorMsgMixin):
     """ upload, update, download and delete files from a Google Drive.
 
-    to prepare Google Drive (root folder and authentication), create in your console (at
+    to prepare Google Drive host api instance (root folder and authentication), create in your console (at
     https://console.cloud.google.com/apis/credentials?orgonly=true&project=oaio-project&supportedpurview=organizationId)
     the credentials for a service account (or an OAuth 2.0 Client) and activate it for your Google Drive project.
     then download the credential json file and store it, and specify its location in the instantiation of the class.
@@ -231,28 +250,31 @@ class GoodriveApi(CshApiBase, ErrorMsgMixin):
 
     """
     CRED_SCOPES = ['https://www.googleapis.com/auth/drive']
-    SKIPPED_FILES_MIMETYPE_PREFIX = 'application/vnd.google-apps.'
     FOLDER_MIMETYPE = 'application/vnd.google-apps.folder'
+    GOOGLE_DRIVE_DEFAULT_ROOT_FOLDER = 'root'
+    SKIPPED_FILES_MIMETYPE_PREFIX = 'application/vnd.google-apps.'
 
-    def __init__(self, root_folder_id: str = GOOGLE_DRIVE_DEFAULT_ROOT_FOLDER,
+    GoodriveRequestReturnType = dict[str, Any]
+
+    def __init__(self, root_folder: str = GOOGLE_DRIVE_DEFAULT_ROOT_FOLDER,
                  sa_cred_dict: Optional[dict[str, Any]] = None, sa_cred_file: str = '.service_account_credentials.json',
-                 oa_cred_file: str = '.oauth2_credentials.json', **kwargs):
+                 oa_cred_file: str = '.oauth2_credentials.json', **csh_args):
         """ initialize an instance to access the Google Drive via API.
 
-        :param root_folder_id:  Google Drive root folder id for this instance.
+        :param root_folder:     Google Drive root folder id for this host api instance.
         :param sa_cred_dict:    service account credentials dictionary (if passed has priority over credential files).
         :param sa_cred_file:    service account credentials file path (if exists has priority over oa_cred_file).
         :param oa_cred_file:    path to the OAuth 2.0 credentials file.
         """
-        super().__init__(**kwargs)
-        self.root_folder_id_default = root_folder_id
+        super().__init__(**csh_args)
+        self.root_folder_id_default = root_folder
 
         if sa_cred_dict:
             creds = self._service_account_authenticate(sa_cred_dict)
-        elif os.path.isfile(sa_cred_file):
+        elif os_path_isfile(sa_cred_file):
             creds = self._service_account_authenticate(sa_cred_file)
         else:
-            assert os.path.isfile(oa_cred_file), f"missing credential json file '{sa_cred_file}' or '{oa_cred_file}'"
+            assert os_path_isfile(oa_cred_file), f"missing credential json file '{sa_cred_file}' or '{oa_cred_file}'"
             creds = self._oauth2_authenticate(oa_cred_file)
 
         self.service = build('drive', 'v3', credentials=creds)
@@ -277,9 +299,10 @@ class GoodriveApi(CshApiBase, ErrorMsgMixin):
 
     def _oauth2_authenticate(self, cred_info: Union[dict, str], cached_cred_file_path: str = '.token.json'
                              ) -> Optional[Credentials]:
+        """ not used/tested """
         creds = None
 
-        if os.path.exists(cached_cred_file_path):   # if user authorization cache file exists then use it
+        if os_path_isfile(cached_cred_file_path):   # if user authorization cache file exists then use it
             try:
                 creds = Credentials.from_authorized_user_file(cached_cred_file_path, self.CRED_SCOPES)
             except (HttpError, Exception):
@@ -323,7 +346,7 @@ class GoodriveApi(CshApiBase, ErrorMsgMixin):
     def delete_file_or_folder(self, file_path: str, empty_trash: bool = False) -> str:
         """ delete a file or folder on the cloud storage host.
 
-        :param file_path:       path relative to the oaio root of the file/folder to be deleted.
+        :param file_path:       path relative to the host root of the file/folder to be deleted.
                                 to delete a folder a trailing slash character has to be added.
                                 .. note:: deleting a folder will also delete all files/folders underneath it.
         :param empty_trash:     pass True to empty the trash (definitely removing this and other deleted files).
@@ -342,7 +365,7 @@ class GoodriveApi(CshApiBase, ErrorMsgMixin):
     def deployed_file_content(self, file_path: str) -> Optional[bytes]:
         """ determine the file content of a file deployed to a server.
 
-        :param file_path:       path of a deployed file relative to the project root.
+        :param file_path:       path of a deployed file relative to the host root folder.
         :return:                file content as bytes or None if error occurred (check self.error_message).
         """
         _folder_id, file_id = self.folder_file_ids(file_path)
@@ -367,7 +390,7 @@ class GoodriveApi(CshApiBase, ErrorMsgMixin):
     def deploy_file(self, file_path: str, source_path: str = '') -> str:
         """ add or update a binary file to the cloud storage host.
 
-        :param file_path:       path (relative to the oaio root) and name of the file to be deployed (added or updated).
+        :param file_path:       path (relative to the host root) and name of the file to be deployed (added or updated).
         :param source_path:     source path if differs from the destination path given in :paramref:`.folder_path`.
         :return:                created/updated file id or empty string on error (check self.error_message for details).
 
@@ -385,7 +408,7 @@ class GoodriveApi(CshApiBase, ErrorMsgMixin):
             file = self._request(self.service.files().update(fileId=file_id, media_body=media, fields="id"))
         else:
             self.error_message = ""
-            file_metadata = {"name": os.path.basename(file_path), "parents": [folder_id]}
+            file_metadata = {"name": os_path_basename(file_path), "parents": [folder_id]}
             file = self._request(self.service.files().create(body=file_metadata, media_body=media, fields="id"))
         return file.get('id', "")
 
