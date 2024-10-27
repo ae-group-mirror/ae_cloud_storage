@@ -6,15 +6,16 @@ import pytest
 
 from conftest import skip_gitlab_ci
 
-from ae.base import load_dotenvs, read_file                                     # type: ignore
-
-from ae.cloud_storage import DigiApi, GoodriveApi, csh_api_class  # type: ignore
+from ae.base import load_dotenvs, os_path_join, read_file  # type: ignore
+from ae.cloud_storage import DigiApi, GoodriveApi, csh_api_class                # type: ignore
 
 
 load_dotenvs()
-tst_digi_email = os.environ.get('DIGI_API_TEST_EMAIL')
-tst_digi_pass = os.environ.get('DIGI_API_TEST_PASSWORD')
-tst_google_drive_root_id = os.environ.get('GOOGLE_DRIVE_ROOT_FOLDER_ID')
+tst_digi_root_folder = os.environ.get('TEST_DIGI_ROOT_FOLDER_NAME')
+tst_digi_email = os.environ.get('TEST_DIGI_API_EMAIL')
+tst_digi_password = os.environ.get('TEST_DIGI_API_PASSWORD')
+
+tst_google_drive_root_id = os.environ.get('TEST_GOOGLE_DRIVE_ROOT_FOLDER_ID')
 
 tst_source_path = 'requirements.txt'
 tst_remote_root = 'tst_root_dir'
@@ -28,7 +29,7 @@ tst_invalid_file_path = '/:/// invalid path :::/any_tst_file.txt'
 @pytest.fixture
 def digi_api_path_content():
     """ provide DigiApi instance, remote path and content of uploaded test file """
-    api = DigiApi(tst_digi_email, tst_digi_pass)
+    api = DigiApi(root_folder=tst_digi_root_folder, email=tst_digi_email, password=tst_digi_password)
     assert api.error_message == ""
     remote_path = tst_remote_path
 
@@ -53,7 +54,7 @@ def digi_api_path_content():
 @pytest.fixture
 def drive_api_path_id_content():
     """ provide Goodrive instance, remote path and content of uploaded test file """
-    api = GoodriveApi(root_folder_id=tst_google_drive_root_id)
+    api = GoodriveApi(root_folder=tst_google_drive_root_id)
     assert api.error_message == ""
 
     file_id = api.deploy_file(tst_remote_path, source_path=tst_source_path)
@@ -90,23 +91,34 @@ def test_csh_api_class():
 @skip_gitlab_ci
 class TestDigiApi:
     def test_create_dirs_invalid_folder_name(self):
-        api = DigiApi(tst_digi_email, tst_digi_pass)
+        api = DigiApi(root_folder=tst_digi_root_folder, email=tst_digi_email, password=tst_digi_password)
         ret = api._create_dirs(':invalid_folder\\name')
         assert ret
 
     def test_delete_file_or_folder_not_existing_error(self):
-        api = DigiApi(tst_digi_email, tst_digi_pass)
+        api = DigiApi(root_folder=tst_digi_root_folder, email=tst_digi_email, password=tst_digi_password)
         assert api.delete_file_or_folder("not_existing_file_path/_not_existing_file.zyx")
         assert api.error_message
 
+    def test_deployed_file_content(self, digi_api_path_content):
+        api, remote_path, content = digi_api_path_content
+
+        assert api.deployed_file_content(remote_path) == content
+
+    def test_deployed_file_content_err(self, digi_api_path_content):
+        api, remote_path, content = digi_api_path_content
+
+        assert not api.deployed_file_content(os_path_join('not_existing_root', remote_path))
+        assert not api.deployed_file_content(os_path_join(remote_path, 'not_existing_file.xyz'))
+
     def test_deploy_file_locally_not_found_error(self):
-        api = DigiApi(tst_digi_email, tst_digi_pass)
+        api = DigiApi(root_folder=tst_digi_root_folder, email=tst_digi_email, password=tst_digi_password)
         not_existing_file_path = 'any_locally_non_existing_file__.xyz'
         assert api.deploy_file(not_existing_file_path) == ""
         assert not_existing_file_path in api.error_message
 
     def test_deploy_file_remote_path_invalid(self):
-        api = DigiApi(tst_digi_email, tst_digi_pass)
+        api = DigiApi(root_folder=tst_digi_root_folder, email=tst_digi_email, password=tst_digi_password)
         assert api.deploy_file(tst_invalid_file_path, source_path=tst_source_path) == ""
         assert tst_invalid_file_path in api.error_message
 
@@ -162,8 +174,8 @@ class TestDigiApi:
 
         assert not api.error_message
 
-    def test_list_dir_on_my_drive(self):
-        api = DigiApi(tst_digi_email, tst_digi_pass)
+    def test_list_dir_on_my_digi_cloud_storage_root(self):
+        api = DigiApi(email=tst_digi_email, password=tst_digi_password)
         files = api.list_dir('Videos')
         assert len(files) >= 7
 
@@ -179,7 +191,7 @@ class TestDigiApi:
 @skip_gitlab_ci
 class TestGoodriveApi:
     def test_create_folder(self):
-        api = GoodriveApi(root_folder_id=tst_google_drive_root_id)
+        api = GoodriveApi(root_folder=tst_google_drive_root_id)
         assert api.error_message == ""
         root_dir = 'created_root_folder_tst'
         sub_dir = 'created_sub_folder_tst'
@@ -207,17 +219,17 @@ class TestGoodriveApi:
 
     def test_cred_info_dict(self):
         cred_dict = json.loads(read_file('.service_account_credentials.json', extra_mode='b'))
-        api = GoodriveApi(root_folder_id=tst_google_drive_root_id, sa_cred_dict=cred_dict)
+        api = GoodriveApi(root_folder=tst_google_drive_root_id, sa_cred_dict=cred_dict)
         assert api.service
         assert not api.error_message
 
     def test_delete_file_or_folder_not_existing_error(self):
-        api = GoodriveApi(root_folder_id=tst_google_drive_root_id)
+        api = GoodriveApi(root_folder=tst_google_drive_root_id)
         assert api.delete_file_or_folder("not_existing_file_path/_not_existing_file.zyx", empty_trash=True)
         assert api.error_message
 
     def test_deploy_file_errors(self):
-        api = GoodriveApi(root_folder_id=tst_google_drive_root_id)
+        api = GoodriveApi(root_folder=tst_google_drive_root_id)
         api.deploy_file(tst_invalid_file_path, source_path=tst_source_path)
         assert tst_invalid_file_path in api.error_message
 
@@ -234,7 +246,7 @@ class TestGoodriveApi:
         assert upd_content == content == read_file(tst_source_path, extra_mode='b')
 
     def test_deployed_file_content_not_existing_error(self):
-        api = GoodriveApi(root_folder_id=tst_google_drive_root_id)
+        api = GoodriveApi(root_folder=tst_google_drive_root_id)
         assert api.deployed_file_content("_not_existing_file_path/not_existing_file.zyx") is None
         assert api.error_message
 
@@ -256,7 +268,7 @@ class TestGoodriveApi:
         assert dir1_id == tst_google_drive_root_id
         assert sub1_id
 
-        dir1_id, sub1_id = api.folder_file_ids(tst_remote_root + '/')   # path relative to oaio_root
+        dir1_id, sub1_id = api.folder_file_ids(tst_remote_root + '/')   # path relative to root folder
         assert not api.error_message
         assert dir1_id == tst_google_drive_root_id
         assert sub1_id
@@ -310,14 +322,14 @@ class TestGoodriveApi:
         assert api.error_message
         api.error_message = ""
 
-        assert not api.folder_file_ids('/oaio_root/')[1]    # exists, but outside the root folder oaio_root
+        assert not api.folder_file_ids('/oaio_root/')[1]                                # exists, but outside the root
         assert 'oaio_root' in api.error_message
 
-        assert not api.folder_file_ids('/music/PlaylistBackups/2018oct/00sh.txt')[1]    # exists, but outside oaio_root
+        assert not api.folder_file_ids('/music/PlaylistBackups/2018oct/00sh.txt')[1]    # exists, but outside the root
         assert '00sh.txt' in api.error_message
 
     def test_google_docs(self):
-        api = GoodriveApi(root_folder_id=tst_google_drive_root_id)
+        api = GoodriveApi(root_folder=tst_google_drive_root_id)
         nam = "Tst Google Document"
         mim = f'{GoodriveApi.SKIPPED_FILES_MIMETYPE_PREFIX}document'    # == 'application/vnd.google-apps.document'
         doc = {}
@@ -351,7 +363,7 @@ class TestGoodriveApi:
                 assert nam in api.error_message
 
     def test_request_error(self):
-        api = GoodriveApi(root_folder_id=tst_google_drive_root_id)
+        api = GoodriveApi(root_folder=tst_google_drive_root_id)
         assert api.error_message == ""
 
         assert api._request(None) == {}
