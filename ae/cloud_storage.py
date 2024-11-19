@@ -33,7 +33,7 @@ from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload           
 from ae.base import os_path_basename, os_path_isfile, os_path_join, read_file, ErrorMsgMixin    # type: ignore
 
 
-__version__ = '0.3.2'
+__version__ = '0.3.3'
 
 
 _registered_csh_classes = {}  #: cloud storage class ids map to their related api classes, used by :func:`csh_api_class`
@@ -83,8 +83,8 @@ class CshApiBase(ErrorMsgMixin, ABC):
 def csh_api_class(csh_id: str) -> Type[CshApiBase]:
     """ determine from the specified cloud storage host id the associated api class
 
-    :param csh_id:
-    :return:
+    :param csh_id:              id of the cloud storage api class.
+    :return:                    cloud storage api class if registered/declared, else the abstract class CshApiClass.
     """
     return _registered_csh_classes.get(csh_id, CshApiBase)
 
@@ -107,10 +107,8 @@ class DigiApi(CshApiBase):
         self.base_url = 'https://digistorage.es'
         self.session = requests.Session()
         token = self.session.get(self.base_url + '/token',
-                                 headers={
-                                     'X-Koofr-Email': email,
-                                     'X-Koofr-Password': password
-                                 }).headers['X-Koofr-Token']
+                                 headers={'X-Koofr-Email': email, 'X-Koofr-Password': password},
+                                 ).headers['X-Koofr-Token']
         self.session.headers['Authorization'] = 'Token ' + token
 
         api_prefix = '/api/v2/mounts'
@@ -234,7 +232,7 @@ class DigiApi(CshApiBase):
             self.session.close()
 
 
-class GoodriveApi(CshApiBase, ErrorMsgMixin):
+class GoodriveApi(CshApiBase):
     """ upload, update, download and delete files from a Google Drive.
 
     to prepare Google Drive host api instance (root folder and authentication), create in your console (at
