@@ -11,7 +11,7 @@ from ae.cloud_storage import DigiApi, GoodriveApi, csh_api_class                
 
 
 load_dotenvs()
-tst_digi_root_folder = os.environ.get('TEST_DIGI_ROOT_FOLDER_NAME')
+tst_digi_root_folder = os.environ.get('TEST_DIGI_ROOT_FOLDER_PATH')
 tst_digi_email = os.environ.get('TEST_DIGI_API_EMAIL')
 tst_digi_password = os.environ.get('TEST_DIGI_API_PASSWORD')
 
