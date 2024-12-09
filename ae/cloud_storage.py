@@ -33,7 +33,7 @@ from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload           
 from ae.base import os_path_basename, os_path_isfile, os_path_join, read_file, ErrorMsgMixin    # type: ignore
 
 
-__version__ = '0.3.3'
+__version__ = '0.3.4'
 
 
 _registered_csh_classes = {}  #: cloud storage class ids map to their related api classes, used by :func:`csh_api_class`
@@ -65,7 +65,8 @@ class CshApiBase(ErrorMsgMixin, ABC):
         """ add or update a binary file to the cloud storage host.
 
         :param file_path:       path (relative to the host root) and name of the file to be deployed (added or updated).
-        :param source_path:     source path if differs from the destination path given in :paramref:`.folder_path`.
+        :param source_path:     source path if differs from the destination path given in
+                                :paramref:`~deploy_file.file_path`.
         :return:                created/updated file path or empty string on error (see self.error_message for details).
         """
 
@@ -171,7 +172,8 @@ class DigiApi(CshApiBase):
         """ add or update a binary file to the cloud storage host.
 
         :param file_path:       path (relative to the host root) and name of the file to be deployed (added or updated).
-        :param source_path:     source path if differs from the destination path given in :paramref:`.folder_path`.
+        :param source_path:     source path if differs from the destination path given in
+                                :paramref:`~deploy_file.file_path`.
         :return:                created/updated file path or empty string on error (see self.error_message for details).
         """
         if ':' in file_path:
@@ -389,12 +391,14 @@ class GoodriveApi(CshApiBase):
         """ add or update a binary file to the cloud storage host.
 
         :param file_path:       path (relative to the host root) and name of the file to be deployed (added or updated).
-        :param source_path:     source path if differs from the destination path given in :paramref:`.folder_path`.
+        :param source_path:     source path if differs from the destination path given in
+                                :paramref:`~deploy_file.file_path`.
         :return:                created/updated file id or empty string on error (check self.error_message for details).
 
         .. note::
             sometimes :meth:`.folder_file_ids` fails to see a deployed file directly after the deployment. on subsequent
             bulk deployments use :meth:`.wait_for_deployment_finish` to wait for finished/completed deployment.
+
         """
         if ':' in file_path:
             self.error_message = f"invalid character ':' in remote file name/path '{file_path}'"
@@ -413,21 +417,27 @@ class GoodriveApi(CshApiBase):
     def folder_file_ids(self, file_path: str, folder_id: str = '', create_folders: bool = False) -> tuple[str, str]:
         """ convert Google Drive file path into the related folder and file ids.
 
-        :param file_path:       path of a file or folder, relative to the folder specified in :paramref:`.folder_id`.
-        :param folder_id:       Google Drive folder id of the root folder where :paramref:`.folder_path` is underneath
-                                of. if not passed then it defaults to the root folder (specified via __init__()).
-                                .. note:: MyDrive GOOGLE_DRIVE_DEFAULT_ROOT_FOLDER/'root' id is working for OAuth2,
-                                but not for service accounts authentication.
+        :param file_path:       path of a file or folder, relative to the folder specified in
+                                :paramref:`~folder_file_ids.folder_id`.
+        :param folder_id:       Google Drive folder id of the root folder where :paramref:`~folder_file_ids.folder_path`
+                                is underneath of. if not passed then it defaults to the root folder (specified via
+                                __init__()).
+
+                                .. note::
+                                    MyDrive GOOGLE_DRIVE_DEFAULT_ROOT_FOLDER/'root' id is working for OAuth2,
+                                    but not for service accounts authentication.
         :param create_folders:  pass True to create non-existing folders in the specified file path.
         :return:                tuple of ids of the specified folder and of the basename file/folder.
                                 if the second tuple item is an empty string then an error occurred, because either
                                 the specified folder/file does not exist,
                                 or the specified basename ends with a slash, although it is a file.
-                                .. note::
-                                    if :paramref:`.folder_path` specifies a Google Drive cloud mimetype, like
-                                    Google Doc/Sheet/.., then although the file id get returned, an error
-                                    message get set (stating that Google Docs cannot be downloaded as files via
-                                    :meth:`.deployed_file_content`).
+
+        .. note::
+            if :paramref:`~folder_file_ids.folder_path` specifies a Google Drive cloud mimetype, like
+            Google Doc/Sheet/.., then although the file id get returned, an error
+            message get set (stating that Google Docs cannot be downloaded as files via
+            :meth:`.deployed_file_content`).
+
         """
         if not folder_id:
             folder_id = self.root_folder_id_default
