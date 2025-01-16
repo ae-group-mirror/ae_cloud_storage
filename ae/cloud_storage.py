@@ -33,7 +33,7 @@ from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload           
 from ae.base import os_path_basename, os_path_isfile, os_path_join, read_file, ErrorMsgMixin    # type: ignore
 
 
-__version__ = '0.3.4'
+__version__ = '0.3.5'
 
 
 _registered_csh_classes = {}  #: cloud storage class ids map to their related api classes, used by :func:`csh_api_class`
@@ -45,6 +45,7 @@ class CshApiBase(ErrorMsgMixin, ABC):
 
         :param csh_args:        individual arguments, like host root path and credentials, of a cloud storage host api.
         """
+        super().__init__()
         assert not csh_args, f"abstract CshApiBase.__init__() got unrecognized kwargs: {csh_args}"
 
     def __init_subclass__(cls):     #: base class to automatic map of cloud storage api classes declared in this module
