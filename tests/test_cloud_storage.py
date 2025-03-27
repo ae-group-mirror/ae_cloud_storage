@@ -44,10 +44,10 @@ def digi_api_path_content():
     yield api, remote_path, content
 
     api.error_message = ""
-    err = api.delete_file_or_folder(tst_remote_root + '/')
+    err = api.delete_file_or_folder('/')
     assert api.error_message == ""
     assert err == ""
-    assert api.list_dir(tst_remote_path) is None
+    assert api.list_dir('/') is None
     assert api.error_message
 
 

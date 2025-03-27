@@ -33,13 +33,14 @@ from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload           
 from ae.base import os_path_basename, os_path_isfile, os_path_join, read_file, ErrorMsgMixin    # type: ignore
 
 
-__version__ = '0.3.5'
+__version__ = '0.3.6'
 
 
 _registered_csh_classes = {}  #: cloud storage class ids map to their related api classes, used by :func:`csh_api_class`
 
 
 class CshApiBase(ErrorMsgMixin, ABC):
+    """ abstract Cloud storage host api base class. """
     def __init__(self, **csh_args):
         """ cloud storage host api instantiation and argument check.
 
@@ -146,14 +147,14 @@ class DigiApi(CshApiBase):
 
     def _request(self, method: str, slug: str, path: str, **kwargs) -> Optional[requests.Response]:
         url = self.base_url + slug
-        kwargs['params'] = {'path': os_path_join(self.root_folder, path.lstrip('/'))}
+        kwargs['params'] = {'path': os_path_join(self.root_folder, path.lstrip('/'))}   # == root + '/' if path == '/'
         try:
             met = getattr(self.session, method)
             res = met(url, **kwargs)
             res.raise_for_status()
             self.error_message = ""
             return res
-        except (requests.HTTPError, requests.ConnectionError, Exception) as ex:
+        except (requests.HTTPError, requests.ConnectionError, Exception) as ex:             # pylint: disable=W0718
             self.error_message = f"request {method}-method error '{ex}' for URL {url}, path {path} and kwargs={kwargs}"
         return None
 
@@ -184,7 +185,7 @@ class DigiApi(CshApiBase):
         source_path = source_path or file_path
         try:
             content = read_file(source_path, extra_mode='b')
-        except (FileNotFoundError, Exception):
+        except (FileNotFoundError, Exception):                      # pylint: disable=W0718
             content = None
         if content is None:
             self.error_message = f"error reading the source file '{source_path}'"
@@ -211,7 +212,8 @@ class DigiApi(CshApiBase):
 
         :param file_path:       path relative to the host root of the file/folder to be deleted.
                                 to delete a folder a trailing slash character has to be added.
-                                .. note:: deleting a folder will also delete all files/folders underneath it.
+                                to delete the root folder pass an empty string or a single slash character.
+                                .. note:: ¡deleting a folder will also delete all files/folders underneath it!
         :return:                error message if deletion failed else on success an empty string.
         """
         res = self._request('delete', self.files_mount_id + 'remove', file_path)
@@ -237,6 +239,8 @@ class DigiApi(CshApiBase):
 
 class GoodriveApi(CshApiBase):
     """ upload, update, download and delete files from a Google Drive.
+
+    .. note:: the Google Drive root folder (id) cannot be created programmatically; prepare before run the unit tests.
 
     to prepare Google Drive host api instance (root folder and authentication), create in your console (at
     https://console.cloud.google.com/apis/credentials?orgonly=true&project=oaio-project&supportedpurview=organizationId)
@@ -274,7 +278,7 @@ class GoodriveApi(CshApiBase):
             creds = self._service_account_authenticate(sa_cred_dict)
         elif os_path_isfile(sa_cred_file):
             creds = self._service_account_authenticate(sa_cred_file)
-        else:
+        else:           # pragma: no cover
             assert os_path_isfile(oa_cred_file), f"missing credential json file '{sa_cred_file}' or '{oa_cred_file}'"
             creds = self._oauth2_authenticate(oa_cred_file)
 
@@ -296,10 +300,10 @@ class GoodriveApi(CshApiBase):
             'mimeType': self.FOLDER_MIMETYPE,
             'parents': [parent_id],
         }
-        return self._request(self.service.files().create(body=file_metadata, fields="id, mimeType"))
+        return self._request(self._files.create(body=file_metadata, fields="id, mimeType"))
 
     def _oauth2_authenticate(self, cred_info: Union[dict, str], cached_cred_file_path: str = '.token.json'
-                             ) -> Optional[Credentials]:
+                             ) -> Optional[Credentials]:    # pragma: no cover
         """ not used/tested """
         creds = None
 
@@ -312,7 +316,7 @@ class GoodriveApi(CshApiBase):
         if creds and creds.refresh_token and (creds.expired or not creds.valid):
             try:
                 creds.refresh(Request())
-            except (HttpError, Exception):
+            except (HttpError, Exception):                          # pylint: disable=W0718
                 creds = None
 
         if not creds or not creds.valid:
@@ -322,7 +326,7 @@ class GoodriveApi(CshApiBase):
                 else:
                     flow = InstalledAppFlow.from_client_secrets_file(cred_info, self.CRED_SCOPES)
                 creds = flow.run_local_server(port=0)
-            except (HttpError, Exception):
+            except (HttpError, Exception):                          # pylint: disable=W0718
                 creds = None
 
         if creds:
@@ -331,16 +335,19 @@ class GoodriveApi(CshApiBase):
 
         return creds
 
+    @property
+    def _files(self):
+        return self.service.files()
+
     def _service_account_authenticate(self, cred_info: Union[dict, str]) -> Optional[Credentials]:
         if isinstance(cred_info, dict):
             return service_account.Credentials.from_service_account_info(cred_info, scopes=self.CRED_SCOPES)
-        else:
-            return service_account.Credentials.from_service_account_file(cred_info, scopes=self.CRED_SCOPES)
+        return service_account.Credentials.from_service_account_file(cred_info, scopes=self.CRED_SCOPES)
 
     def _request(self, prepared_call: Any) -> GoodriveRequestReturnType:
         try:
             return prepared_call.execute()
-        except (HttpError, Exception) as ex:
+        except (HttpError, Exception) as ex:                                                # pylint: disable=W0718
             self.error_message = f"HttpError {ex} executing {prepared_call}"
             return {}
 
@@ -353,11 +360,11 @@ class GoodriveApi(CshApiBase):
         :param empty_trash:     pass True to empty the trash (definitely removing this and other deleted files).
         :return:                error message if deletion failed else on success an empty string.
         """
-        folder_id, file_id = self.folder_file_ids(file_path)
+        _folder_id, file_id = self.folder_file_ids(file_path)
         if file_id:
-            self._request(self.service.files().delete(fileId=file_id))  # returns {} on success and error
+            self._request(self._files.delete(fileId=file_id))  # returns {} on success and error
             if not self.error_message and empty_trash:
-                self._request(self.service.files().emptyTrash())
+                self._request(self._files.emptyTrash())
         else:
             self.error_message = f"error in deleting file '{file_path}'"
 
@@ -373,12 +380,12 @@ class GoodriveApi(CshApiBase):
         if not file_id:
             return None
 
-        request = self.service.files().get_media(fileId=file_id)
+        request = self._files.get_media(fileId=file_id)
         fh = io.BytesIO()
         downloader = MediaIoBaseDownload(fh, request)
 
         while True:
-            status, done = downloader.next_chunk()
+            _status, done = downloader.next_chunk()
             if done:
                 break
             # callback or print(f"{int(status.progress() * 100)}% in downloading the file '{folder_path}' ... ")
@@ -408,11 +415,11 @@ class GoodriveApi(CshApiBase):
         media = MediaFileUpload(source_path or file_path)
         folder_id, file_id = self.folder_file_ids(file_path, create_folders=True)
         if file_id:
-            file = self._request(self.service.files().update(fileId=file_id, media_body=media, fields="id"))
+            file = self._request(self._files.update(fileId=file_id, media_body=media, fields="id"))
         else:
             self.error_message = ""
             file_metadata = {"name": os_path_basename(file_path), "parents": [folder_id]}
-            file = self._request(self.service.files().create(body=file_metadata, media_body=media, fields="id"))
+            file = self._request(self._files.create(body=file_metadata, media_body=media, fields="id"))
         return file.get('id', "")
 
     def folder_file_ids(self, file_path: str, folder_id: str = '', create_folders: bool = False) -> tuple[str, str]:
@@ -452,7 +459,7 @@ class GoodriveApi(CshApiBase):
         file_id = ''
         for idx, part in enumerate(path_parts):
             query = f"'{folder_id}' in parents and name = '{part}' and trashed = false"
-            results = self._request(self.service.files().list(q=query, fields="files(id, mimeType)"))  # files(*)
+            results = self._request(self._files.list(q=query, fields="files(id, mimeType)"))  # files(*)
             items = results.get('files', [])
             if items:
                 file_item = items[0]
@@ -496,7 +503,7 @@ class GoodriveApi(CshApiBase):
             tries += 1
             ids = self.folder_file_ids(path)
             if (ids[1] == file_id if file_id else ids[1]) or tries == max_tries:
-                break
+                break           # pragma: no cover
             if verbose:
                 print(f"**** {path} not created after {tries} tries, time waiting: {time.time() - start} seconds")
         return ids, tries, time.time() - start
