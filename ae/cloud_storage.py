@@ -22,9 +22,10 @@ from typing import Any, Optional, Type, Union
 import requests
 
 from google.auth.transport.requests import Request
-from google_auth_oauthlib.flow import InstalledAppFlow                                          # type: ignore
 from google.oauth2 import service_account
 from google.oauth2.credentials import Credentials
+
+from google_auth_oauthlib.flow import InstalledAppFlow                                          # type: ignore
 
 from googleapiclient.discovery import build                                                     # type: ignore
 from googleapiclient.errors import HttpError                                                    # type: ignore
@@ -33,7 +34,7 @@ from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload           
 from ae.base import os_path_basename, os_path_isfile, os_path_join, read_file, ErrorMsgMixin    # type: ignore
 
 
-__version__ = '0.3.6'
+__version__ = '0.3.7'
 
 
 _registered_csh_classes = {}  #: cloud storage class ids map to their related api classes, used by :func:`csh_api_class`
@@ -96,7 +97,6 @@ class DigiApi(CshApiBase):
     """ upload, update, download and delete files from Digi Movil Storage.
 
     the requests package is the only requirement of this class, which can be installed via `pip install requests`.
-
     """
     def __init__(self, root_folder: str = "", email: str = "", password: str = "", **csh_args):
         """ DigiStorage host instantiation.
@@ -154,7 +154,7 @@ class DigiApi(CshApiBase):
             res.raise_for_status()
             self.error_message = ""
             return res
-        except (requests.HTTPError, requests.ConnectionError, Exception) as ex:             # pylint: disable=W0718
+        except (requests.HTTPError, requests.ConnectionError, Exception) as ex:         # pylint: disable=broad-except
             self.error_message = f"request {method}-method error '{ex}' for URL {url}, path {path} and kwargs={kwargs}"
         return None
 
@@ -185,7 +185,7 @@ class DigiApi(CshApiBase):
         source_path = source_path or file_path
         try:
             content = read_file(source_path, extra_mode='b')
-        except (FileNotFoundError, Exception):                      # pylint: disable=W0718
+        except (FileNotFoundError, Exception):                      # pylint: disable=broad-except
             content = None
         if content is None:
             self.error_message = f"error reading the source file '{source_path}'"
@@ -304,19 +304,19 @@ class GoodriveApi(CshApiBase):
 
     def _oauth2_authenticate(self, cred_info: Union[dict, str], cached_cred_file_path: str = '.token.json'
                              ) -> Optional[Credentials]:    # pragma: no cover
-        """ not used/tested """
+        """ ALTERNATIVE EXPERIMENTAL OAuth2 authentication - missing unit tests """
         creds = None
 
         if os_path_isfile(cached_cred_file_path):   # if user authorization cache file exists then use it
             try:
                 creds = Credentials.from_authorized_user_file(cached_cred_file_path, self.CRED_SCOPES)
-            except (HttpError, Exception):
+            except (HttpError, Exception):                          # pylint: disable=broad-except
                 creds = None
 
         if creds and creds.refresh_token and (creds.expired or not creds.valid):
             try:
                 creds.refresh(Request())
-            except (HttpError, Exception):                          # pylint: disable=W0718
+            except (HttpError, Exception):                          # pylint: disable=broad-except
                 creds = None
 
         if not creds or not creds.valid:
@@ -326,18 +326,18 @@ class GoodriveApi(CshApiBase):
                 else:
                     flow = InstalledAppFlow.from_client_secrets_file(cred_info, self.CRED_SCOPES)
                 creds = flow.run_local_server(port=0)
-            except (HttpError, Exception):                          # pylint: disable=W0718
+            except (HttpError, Exception):                          # pylint: disable=broad-except
                 creds = None
 
         if creds:
-            with open(cached_cred_file_path, 'w') as token:     # save for next run
-                token.write(creds.to_json())
+            with open(cached_cred_file_path, 'w') as token:         # pylint: disable=unspecified-encoding
+                token.write(creds.to_json())                        # save for next run
 
         return creds
 
     @property
     def _files(self):
-        return self.service.files()
+        return self.service.files()                                 # pylint: disable=no-member
 
     def _service_account_authenticate(self, cred_info: Union[dict, str]) -> Optional[Credentials]:
         if isinstance(cred_info, dict):
@@ -347,8 +347,8 @@ class GoodriveApi(CshApiBase):
     def _request(self, prepared_call: Any) -> GoodriveRequestReturnType:
         try:
             return prepared_call.execute()
-        except (HttpError, Exception) as ex:                                                # pylint: disable=W0718
-            self.error_message = f"HttpError {ex} executing {prepared_call}"
+        except (HttpError, Exception) as ex:                                    # pylint: disable=broad-except
+            self.error_message = f"HttpError {ex} executing {prepared_call=}"
             return {}
 
     def delete_file_or_folder(self, file_path: str, empty_trash: bool = False) -> str:
@@ -366,7 +366,7 @@ class GoodriveApi(CshApiBase):
             if not self.error_message and empty_trash:
                 self._request(self._files.emptyTrash())
         else:
-            self.error_message = f"error in deleting file '{file_path}'"
+            self.error_message = f"error in deleting {file_path=}"
 
         return self.error_message
 
@@ -380,19 +380,25 @@ class GoodriveApi(CshApiBase):
         if not file_id:
             return None
 
-        request = self._files.get_media(fileId=file_id)
-        fh = io.BytesIO()
-        downloader = MediaIoBaseDownload(fh, request)
+        try:
+            request = self._files.get_media(fileId=file_id)
+            fh = io.BytesIO()
+            downloader = MediaIoBaseDownload(fh, request)               # chunksize=DEFAULT_CHUNK_SIZE
 
-        while True:
-            _status, done = downloader.next_chunk()
-            if done:
-                break
-            # callback or print(f"{int(status.progress() * 100)}% in downloading the file '{folder_path}' ... ")
+            while True:
+                # add callback or print(f"{int(status.progress() * 100)}% in downloading the file '{folder_path}' ... ")
+                _status, done = downloader.next_chunk(num_retries=1)    # default: num_retries=0
+                if done:
+                    break
 
-        fh.seek(0)
-        content = fh.read()
-        fh.close()
+            fh.seek(0)
+            content = fh.read()
+            fh.close()
+
+        except (HttpError, Exception) as execption:                 # pylint: disable=broad-except # pragma: no cover
+            self.error_message = f"Raised {execption=} in retrieving content of {file_path=}"
+            content = None
+
         return content
 
     def deploy_file(self, file_path: str, source_path: str = '') -> str:
@@ -409,7 +415,7 @@ class GoodriveApi(CshApiBase):
 
         """
         if ':' in file_path:
-            self.error_message = f"invalid character ':' in remote file name/path '{file_path}'"
+            self.error_message = f"invalid character ':' in remote {file_path=}"
             return ""
 
         media = MediaFileUpload(source_path or file_path)
@@ -475,7 +481,7 @@ class GoodriveApi(CshApiBase):
                 elif is_folder:
                     file_id = file_item['id']
                 else:
-                    self.error_message = err_msg + f"(expected trailing slash after last folder item '{part}')"
+                    self.error_message = err_msg + f"(expected trailing slash after last folder item {part=})"
             elif idx == last_idx:
                 file_id = file_item['id']
                 if file_item['mimeType'].startswith(self.SKIPPED_FILES_MIMETYPE_PREFIX):
