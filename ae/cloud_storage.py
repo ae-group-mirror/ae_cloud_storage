@@ -34,7 +34,7 @@ from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload           
 from ae.base import os_path_basename, os_path_isfile, os_path_join, read_file, ErrorMsgMixin    # type: ignore
 
 
-__version__ = '0.3.7'
+__version__ = '0.3.8'
 
 
 _registered_csh_classes = {}  #: cloud storage class ids map to their related api classes, used by :func:`csh_api_class`
