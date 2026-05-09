@@ -1,12 +1,12 @@
-<!-- THIS FILE IS EXCLUSIVELY MAINTAINED by the project ae.ae V0.3.96 -->
-<!-- THIS FILE IS EXCLUSIVELY MAINTAINED by the project aedev.tpl_namespace_root V0.3.14 -->
-# cloud_storage 0.3.8
+<!-- THIS FILE IS EXCLUSIVELY MAINTAINED by the project ae.ae v0.3.103 -->
+<!-- THIS FILE IS EXCLUSIVELY MAINTAINED by the project aedev.namespace_root_tpls v0.3.22 -->
+# cloud_storage 0.3.9
 
 [![GitLab develop](https://img.shields.io/gitlab/pipeline/ae-group/ae_cloud_storage/develop?logo=python)](
     https://gitlab.com/ae-group/ae_cloud_storage)
 [![LatestPyPIrelease](
-    https://img.shields.io/gitlab/pipeline/ae-group/ae_cloud_storage/release0.3.7?logo=python)](
-    https://gitlab.com/ae-group/ae_cloud_storage/-/tree/release0.3.7)
+    https://img.shields.io/gitlab/pipeline/ae-group/ae_cloud_storage/release0.3.9?logo=python)](
+    https://gitlab.com/ae-group/ae_cloud_storage/-/tree/release0.3.9)
 [![PyPIVersions](https://img.shields.io/pypi/v/ae_cloud_storage)](
     https://pypi.org/project/ae-cloud-storage/#history)
 
@@ -54,7 +54,7 @@ following command in the root folder of this repository
 (ae_cloud_storage):
 
 ```shell script
-pip install -e .[dev]
+pip install --editable .[dev]
 ```
 
 the last command will install this module portion, along with the tools you need
