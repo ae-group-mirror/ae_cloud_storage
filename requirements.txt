@@ -4,3 +4,6 @@ google-auth-httplib2
 google-api-python-client
 requests
 ae_base
+ae_app_log
+ae_system
+

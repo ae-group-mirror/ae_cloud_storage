@@ -31,13 +31,14 @@ from googleapiclient.discovery import build                                     
 from googleapiclient.errors import HttpError                                                    # type: ignore
 from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload                           # type: ignore
 
-from ae.base import os_path_basename, os_path_isfile, os_path_join, read_file, ErrorMsgMixin    # type: ignore
+from ae.base import os_path_basename, os_path_isfile, os_path_join, read_file                   # type: ignore
+from ae.app_log import ErrorMsgMixin                                                            # type: ignore
 
 
-__version__ = '0.3.8'
+__version__ = '0.3.9'
 
 
-_registered_csh_classes = {}  #: cloud storage class ids map to their related api classes, used by :func:`csh_api_class`
+_registered_csh_classes = {}    #: mapping of cloud-storage-hosts class ids to their related api classes
 
 
 class CshApiBase(ErrorMsgMixin, ABC):
@@ -106,6 +107,7 @@ class DigiApi(CshApiBase):
         :param password:        host account password to authenticate.
         :param csh_args:        generic cloud storage host arguments.
         """
+        self.session = None  # prevent AttributeError exc in __del__() if invalid kwarg detected in super()-csh_args
         super().__init__(**csh_args)
         self.base_url = 'https://digistorage.es'
         self.session = requests.Session()
@@ -116,8 +118,8 @@ class DigiApi(CshApiBase):
 
         api_prefix = '/api/v2/mounts'
         res = self.session.get(self.base_url + api_prefix).json()
-        mount = [x for x in res['mounts'] if x['name'] == 'DIGIstorage'][0]
-        self.files_mount_id = api_prefix + '/' + mount['id'] + '/files/'
+        mounts = [x for x in res['mounts'] if x['name'] == 'DIGIstorage']
+        self.files_mount_id = api_prefix + '/' + (mounts[0]['id'] if mounts else 'unknown_mount_id') + '/files/'
 
         self.root_folder = ""
         if root_folder:
@@ -157,6 +159,18 @@ class DigiApi(CshApiBase):
         except (requests.HTTPError, requests.ConnectionError, Exception) as ex:         # pylint: disable=broad-except
             self.error_message = f"request {method}-method error '{ex}' for URL {url}, path {path} and kwargs={kwargs}"
         return None
+
+    def delete_file_or_folder(self, file_path: str) -> str:
+        """ delete a file or folder on the cloud storage host.
+
+        :param file_path:       path relative to the host root of the file/folder to be deleted.
+                                to delete a folder a trailing slash character has to be added.
+                                to delete the root folder pass an empty string or a single slash character.
+                                .. note:: ¡deleting a folder will also delete all files/folders underneath it!
+        :return:                error message if deletion failed else on success an empty string.
+        """
+        res = self._request('delete', self.files_mount_id + 'remove', file_path)
+        return "" if res else self.error_message
 
     def deployed_file_content(self, file_path: str) -> Optional[bytes]:
         """ determine the file content of a file deployed to a server.
@@ -207,18 +221,6 @@ class DigiApi(CshApiBase):
                             )                       # res.json()[0]['name'] contains file name
         return file_path if res else ""
 
-    def delete_file_or_folder(self, file_path: str) -> str:
-        """ delete a file or folder on the cloud storage host.
-
-        :param file_path:       path relative to the host root of the file/folder to be deleted.
-                                to delete a folder a trailing slash character has to be added.
-                                to delete the root folder pass an empty string or a single slash character.
-                                .. note:: ¡deleting a folder will also delete all files/folders underneath it!
-        :return:                error message if deletion failed else on success an empty string.
-        """
-        res = self._request('delete', self.files_mount_id + 'remove', file_path)
-        return "" if res else self.error_message
-
     def list_dir(self, folder_path: str) -> Optional[list[str]]:
         """ determine files and folders in the specified folder.
 
@@ -245,7 +247,7 @@ class GoodriveApi(CshApiBase):
     to prepare Google Drive host api instance (root folder and authentication), create in your console (at
     https://console.cloud.google.com/apis/credentials?orgonly=true&project=oaio-project&supportedpurview=organizationId)
     the credentials for a service account (or an OAuth 2.0 Client) and activate it for your Google Drive project.
-    then download the credential json file and store it, and specify its location in the instantiation of the class.
+    then download the credential JSON file and store it, and specify its location in the instantiation of the class.
 
     .. hint:: the Google ``API Keys`` cannot be used for Google Drive authentication.
 
@@ -284,7 +286,7 @@ class GoodriveApi(CshApiBase):
 
         self.service = build('drive', 'v3', credentials=creds)
 
-    def _create_folder(self, folder_name: str, parent_id: str) -> GoodriveRequestReturnType:
+    def _create_folder(self, folder_name: str, parent_id: str) -> GoodriveRequestReturnType:    # pragma: no cover
         """ create a single folder under the parent folder (specified by id).
 
         .. note::
@@ -366,7 +368,7 @@ class GoodriveApi(CshApiBase):
             if not self.error_message and empty_trash:
                 self._request(self._files.emptyTrash())
         else:
-            self.error_message = f"error in deleting {file_path=}"
+            self.error_message = f"error in deleting {file_path=}"      # pragma: no cover
 
         return self.error_message
 
@@ -378,7 +380,7 @@ class GoodriveApi(CshApiBase):
         """
         _folder_id, file_id = self.folder_file_ids(file_path)
         if not file_id:
-            return None
+            return None     # pragma: no cover
 
         try:
             request = self._files.get_media(fileId=file_id)
@@ -395,8 +397,8 @@ class GoodriveApi(CshApiBase):
             content = fh.read()
             fh.close()
 
-        except (HttpError, Exception) as execption:                 # pylint: disable=broad-except # pragma: no cover
-            self.error_message = f"Raised {execption=} in retrieving content of {file_path=}"
+        except (HttpError, Exception) as exception:                 # pylint: disable=broad-except # pragma: no cover
+            self.error_message = f"Raised {exception=} in retrieving content of {file_path=}"
             content = None
 
         return content
@@ -422,7 +424,7 @@ class GoodriveApi(CshApiBase):
         folder_id, file_id = self.folder_file_ids(file_path, create_folders=True)
         if file_id:
             file = self._request(self._files.update(fileId=file_id, media_body=media, fields="id"))
-        else:
+        else:       # pragma: no cover
             self.error_message = ""
             file_metadata = {"name": os_path_basename(file_path), "parents": [folder_id]}
             file = self._request(self._files.create(body=file_metadata, media_body=media, fields="id"))
@@ -470,7 +472,7 @@ class GoodriveApi(CshApiBase):
             if items:
                 file_item = items[0]
             else:
-                if not create_folders or idx == last_idx and not is_folder:
+                if not create_folders or idx == last_idx and not is_folder:     # pragma: no cover
                     self.error_message = err_msg + f"(missing '{part}' in folder '{'/'.join(path_parts[:idx])}')"
                     break       # return folder_id, ''
                 file_item = self._create_folder(part, folder_id)
@@ -480,7 +482,7 @@ class GoodriveApi(CshApiBase):
                     folder_id = file_item['id']
                 elif is_folder:
                     file_id = file_item['id']
-                else:
+                else:           # pragma: no cover
                     self.error_message = err_msg + f"(expected trailing slash after last folder item {part=})"
             elif idx == last_idx:
                 file_id = file_item['id']
@@ -510,6 +512,6 @@ class GoodriveApi(CshApiBase):
             ids = self.folder_file_ids(path)
             if (ids[1] == file_id if file_id else ids[1]) or tries == max_tries:
                 break           # pragma: no cover
-            if verbose:
+            if verbose:         # pragma: no cover
                 print(f"**** {path} not created after {tries} tries, time waiting: {time.time() - start} seconds")
         return ids, tries, time.time() - start
