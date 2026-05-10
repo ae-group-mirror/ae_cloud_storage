@@ -35,7 +35,7 @@ from ae.base import os_path_basename, os_path_isfile, os_path_join, read_file   
 from ae.app_log import ErrorMsgMixin                                                            # type: ignore
 
 
-__version__ = '0.3.10'
+__version__ = '0.3.11'
 
 
 _registered_csh_classes: dict[str, type['CshApiBase']] = {}
