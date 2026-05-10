@@ -1,12 +1,12 @@
 <!-- THIS FILE IS EXCLUSIVELY MAINTAINED by the project ae.ae v0.3.103 -->
 <!-- THIS FILE IS EXCLUSIVELY MAINTAINED by the project aedev.namespace_root_tpls v0.3.22 -->
-# cloud_storage 0.3.10
+# cloud_storage 0.3.11
 
 [![GitLab develop](https://img.shields.io/gitlab/pipeline/ae-group/ae_cloud_storage/develop?logo=python)](
     https://gitlab.com/ae-group/ae_cloud_storage)
 [![LatestPyPIrelease](
-    https://img.shields.io/gitlab/pipeline/ae-group/ae_cloud_storage/release0.3.10?logo=python)](
-    https://gitlab.com/ae-group/ae_cloud_storage/-/tree/release0.3.10)
+    https://img.shields.io/gitlab/pipeline/ae-group/ae_cloud_storage/release0.3.11?logo=python)](
+    https://gitlab.com/ae-group/ae_cloud_storage/-/tree/release0.3.11)
 [![PyPIVersions](https://img.shields.io/pypi/v/ae_cloud_storage)](
     https://pypi.org/project/ae-cloud-storage/#history)
 

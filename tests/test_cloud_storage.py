@@ -131,19 +131,15 @@ def goo_api(goo_service):
     with (patch('ae.cloud_storage.build', return_value=goo_service),
           patch('ae.cloud_storage.service_account.Credentials.from_service_account_info'),
           patch('ae.cloud_storage.service_account.Credentials.from_service_account_file')):
-        # We pass a dict to trigger the service account auth path
-        api = GoodriveApi(sa_cred_dict={'tech': 'gemini'})
+        api = GoodriveApi(sa_cred_dict={'tst-cred-key': 'tst-cred-val'})  # pass cred dict to use service account auth
         yield api
 
 
 class TestGoodriveApi:
-    def test___init(self):
-        with patch('ae.cloud_storage.build'):  # patch googleapiclient.discovery.build()
-            goo_mock = GoodriveApi(root_folder="tst-root-folder")
-
-            assert isinstance(goo_mock.root_folder_id_default, str) and goo_mock.root_folder_id_default != ""
-            assert isinstance(goo_mock.error_message, str) and goo_mock.error_message == ""
-            assert isinstance(goo_mock.service, MagicMock)
+    def test___init(self, goo_api):
+        assert isinstance(goo_api.root_folder_id_default, str) and goo_api.root_folder_id_default != ""
+        assert isinstance(goo_api.error_message, str) and goo_api.error_message == ""
+        assert isinstance(goo_api.service, MagicMock)
 
     def test_init_with_sa_file(self):
         with (patch('ae.cloud_storage.os_path_isfile', return_value=True) as _mock_isfile,
