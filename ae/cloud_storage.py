@@ -35,10 +35,11 @@ from ae.base import os_path_basename, os_path_isfile, os_path_join, read_file   
 from ae.app_log import ErrorMsgMixin                                                            # type: ignore
 
 
-__version__ = '0.3.9'
+__version__ = '0.3.10'
 
 
-_registered_csh_classes = {}    #: mapping of cloud-storage-hosts class ids to their related api classes
+_registered_csh_classes: dict[str, type['CshApiBase']] = {}
+""" mapping of cloud-storage-hosts class ids to their related api classes """
 
 
 class CshApiBase(ErrorMsgMixin, ABC):

@@ -53,6 +53,7 @@ setup_kwargs = {
         'google-auth-httplib2',
         'google-api-python-client',
         'requests',
+        'types-requests',
         'ae_base',
         'ae_app_log',
         'ae_system',
@@ -81,7 +82,7 @@ setup_kwargs = {
     },
     'python_requires': '>=3.12',
     'url': 'https://gitlab.com/ae-group/ae_cloud_storage',
-    'version': '0.3.9',
+    'version': '0.3.10',
     'zip_safe': True,
 }
 
