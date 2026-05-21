@@ -6,7 +6,7 @@ import pytest
 
 from conftest import skip_gitlab_ci
 
-from ae.base import os_path_join, read_file
+from ae.base import os_path_join, read_bin_file
 from ae.system import load_dotenvs
 
 
@@ -43,7 +43,7 @@ def digi_api_path_content():
 
     content = api.deployed_file_content(remote_path)
     assert api.error_message == ""
-    assert content == read_file(tst_source_path, extra_mode='b')
+    assert content == read_bin_file(tst_source_path)
 
     yield api, remote_path, content
 
@@ -69,7 +69,7 @@ def drive_api_path_id_content():
 
     content = api.deployed_file_content(tst_remote_path)
     assert api.error_message == ""
-    assert content == read_file(tst_source_path, extra_mode='b')
+    assert content == read_bin_file(tst_source_path)
 
     yield api, tst_remote_path, file_id, content
 
@@ -140,7 +140,7 @@ class TestDigiApiIntegration:
 
         upd_content = api.deployed_file_content(remote_path)
         assert api.error_message == ""
-        assert upd_content == content == read_file(tst_source_path, extra_mode='b')
+        assert upd_content == content == read_bin_file(tst_source_path)
 
     def test_err_msg_reset(self, digi_api_path_content):
         api, remote_path, content = digi_api_path_content
@@ -228,7 +228,7 @@ class TestGoodriveApiIntegration:
             assert not root or not api.delete_file_or_folder(root_dir + '/', empty_trash=True)
 
     def test_cred_info_dict(self):
-        cred_dict = json.loads(read_file('.service_account_credentials.json', extra_mode='b'))
+        cred_dict = json.loads(read_bin_file('.service_account_credentials.json'))
         api = GoodriveApi(root_folder=tst_google_drive_root_id, sa_cred_dict=cred_dict)
         assert api.service
         assert not api.error_message
@@ -253,7 +253,7 @@ class TestGoodriveApiIntegration:
 
         upd_content = api.deployed_file_content(remote_path)
         assert api.error_message == ""
-        assert upd_content == content == read_file(tst_source_path, extra_mode='b')
+        assert upd_content == content == read_bin_file(tst_source_path)
 
     def test_deployed_file_content_not_existing_error(self):
         api = GoodriveApi(root_folder=tst_google_drive_root_id)

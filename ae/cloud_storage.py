@@ -31,11 +31,11 @@ from googleapiclient.discovery import build                                     
 from googleapiclient.errors import HttpError                                                    # type: ignore
 from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload                           # type: ignore
 
-from ae.base import os_path_basename, os_path_isfile, os_path_join, read_file                   # type: ignore
+from ae.base import os_path_basename, os_path_isfile, os_path_join, read_bin_file               # type: ignore
 from ae.app_log import ErrorMsgMixin                                                            # type: ignore
 
 
-__version__ = '0.3.11'
+__version__ = '0.3.12'
 
 
 _registered_csh_classes: dict[str, type['CshApiBase']] = {}
@@ -199,7 +199,7 @@ class DigiApi(CshApiBase):
 
         source_path = source_path or file_path
         try:
-            content = read_file(source_path, extra_mode='b')
+            content = read_bin_file(source_path)
         except (FileNotFoundError, Exception):                      # pylint: disable=broad-except
             content = None
         if content is None:
