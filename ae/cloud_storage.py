@@ -35,7 +35,7 @@ from ae.base import os_path_basename, os_path_isfile, os_path_join, read_bin_fil
 from ae.app_log import ErrorMsgMixin                                                            # type: ignore
 
 
-__version__ = '0.3.12'
+__version__ = '0.3.13'
 
 
 _registered_csh_classes: dict[str, type['CshApiBase']] = {}
@@ -120,7 +120,7 @@ class DigiApi(CshApiBase):
         api_prefix = '/api/v2/mounts'
         res = self.session.get(self.base_url + api_prefix).json()
         mounts = [x for x in res['mounts'] if x['name'] == 'DIGIstorage']
-        self.files_mount_id = api_prefix + '/' + (mounts[0]['id'] if mounts else 'unknown_mount_id') + '/files/'
+        self.files_mount_id = api_prefix + "/" + (mounts[0]['id'] if mounts else 'unknownMountId') + "/" + 'files' + "/"
 
         self.root_folder = ""
         if root_folder:
@@ -134,11 +134,11 @@ class DigiApi(CshApiBase):
             return self.error_message
 
         walk_path = ''
-        for part in folder_path.strip('/').split('/'):
-            walk_path += '/' + part
+        for part in folder_path.strip("/").split("/"):
+            walk_path += "/" + part
             parent_path, folder_name = os.path.split(walk_path)
-            entry = [_ for _ in self.list_dir(parent_path) or [] if _.endswith('/')]
-            if folder_name + '/' not in entry:
+            entry = [_ for _ in self.list_dir(parent_path) or [] if _.endswith("/")]
+            if folder_name + "/" not in entry:
                 res = self._request('post', self.files_mount_id + 'folder', parent_path,
                                     data=json.dumps({"name": folder_name}),
                                     headers={'content-type': 'application/json'}
@@ -150,7 +150,7 @@ class DigiApi(CshApiBase):
 
     def _request(self, method: str, slug: str, path: str, **kwargs) -> Optional[requests.Response]:
         url = self.base_url + slug
-        kwargs['params'] = {'path': os_path_join(self.root_folder, path.lstrip('/'))}   # == root + '/' if path == '/'
+        kwargs['params'] = {'path': os_path_join(self.root_folder, path.lstrip("/"))}   # == root + "/" if path == "/"
         try:
             met = getattr(self.session, method)
             res = met(url, **kwargs)
@@ -232,7 +232,7 @@ class DigiApi(CshApiBase):
         res = self._request('get', self.files_mount_id + 'list', folder_path)
         if res and res.ok:
             files = res.json()['files']
-            return [_['name'] + ('/' if _['type'] == 'dir' else '') for _ in files]
+            return [_['name'] + ("/" if _['type'] == 'dir' else '') for _ in files]
         return None
 
     def __del__(self):
@@ -462,8 +462,8 @@ class GoodriveApi(CshApiBase):
         err_msg = f"invalid path '{file_path}' "
         self.error_message = ""
 
-        is_folder = file_path.endswith('/')
-        path_parts = file_path.strip('/').split('/')
+        is_folder = file_path.endswith("/")
+        path_parts = file_path.strip("/").split("/")
         last_idx = len(path_parts) - 1
         file_id = ''
         for idx, part in enumerate(path_parts):
@@ -474,7 +474,7 @@ class GoodriveApi(CshApiBase):
                 file_item = items[0]
             else:
                 if not create_folders or idx == last_idx and not is_folder:     # pragma: no cover
-                    self.error_message = err_msg + f"(missing '{part}' in folder '{'/'.join(path_parts[:idx])}')"
+                    self.error_message = err_msg + f"(missing '{part}' in folder '{"/".join(path_parts[:idx])}')"
                     break       # return folder_id, ''
                 file_item = self._create_folder(part, folder_id)
 
