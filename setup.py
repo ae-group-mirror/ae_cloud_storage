@@ -1,4 +1,4 @@
-# THIS FILE IS EXCLUSIVELY MAINTAINED by the project aedev.project_tpls v0.3.78
+# THIS FILE IS EXCLUSIVELY MAINTAINED by the project aedev.project_tpls v0.3.79
 """ setup of ae namespace module portion cloud_storage: distribute files to and retrieve them from cloud storage hosts.. """
 import sys
 # noinspection PyUnresolvedReferences
@@ -82,7 +82,7 @@ setup_kwargs = {
     },
     'python_requires': '>=3.12',
     'url': 'https://gitlab.com/ae-group/ae_cloud_storage',
-    'version': '0.3.12',
+    'version': '0.3.13',
     'zip_safe': True,
 }
 

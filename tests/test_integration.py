@@ -48,10 +48,10 @@ def digi_api_path_content():
     yield api, remote_path, content
 
     api.error_message = ""
-    err = api.delete_file_or_folder('/')
+    err = api.delete_file_or_folder("/")
     assert api.error_message == ""
     assert err == ""
-    assert api.list_dir('/') is None
+    assert api.list_dir("/") is None
     assert api.error_message
 
 
@@ -74,7 +74,7 @@ def drive_api_path_id_content():
     yield api, tst_remote_path, file_id, content
 
     api.error_message = ""
-    err = api.delete_file_or_folder(tst_remote_root + '/', empty_trash=True)
+    err = api.delete_file_or_folder(tst_remote_root + "/", empty_trash=True)
     assert api.error_message == ""
     assert err == ""
 
@@ -159,21 +159,21 @@ class TestDigiApiIntegration:
         files = api.list_dir(path)
         assert files
         assert len(files) == 1
-        assert files[0] == tst_remote_sub1 + '/'
+        assert files[0] == tst_remote_sub1 + "/"
 
-        path += '/' + tst_remote_sub1
+        path += "/" + tst_remote_sub1
         files = api.list_dir(path)
         assert files
         assert len(files) == 1
-        assert files[0] == tst_remote_sub2 + '/'
+        assert files[0] == tst_remote_sub2 + "/"
 
-        path += '/' + tst_remote_sub2
+        path += "/" + tst_remote_sub2
         files = api.list_dir(path)
         assert files
         assert len(files) == 1
         assert files[0] == tst_remote_file
 
-        path += '/'
+        path += "/"
         files = api.list_dir(path)
         assert files
         assert len(files) == 1
@@ -190,7 +190,7 @@ class TestDigiApiIntegration:
         files_and_folders = api.list_dir('Pictures')
         assert files_and_folders
         assert len(files_and_folders) >= 61
-        assert len([_ for _ in files_and_folders if _.endswith('/')]) >= 7
+        assert len([_ for _ in files_and_folders if _.endswith("/")]) >= 7
 
     def test_upload_create_sub_dir_in_path(self, digi_api_path_content):
         api, remote_path, content = digi_api_path_content
@@ -218,14 +218,14 @@ class TestGoodriveApiIntegration:
             assert sub['id']
             assert sub['mimeType'] == GoodriveApi.FOLDER_MIMETYPE
 
-            folder_path = os.path.join(root_dir, sub_dir) + '/'
+            folder_path = os.path.join(root_dir, sub_dir) + "/"
             ids, _tries, _wait = api.wait_for_deployment_finish(folder_path, verbose=True)
             assert ids[1] == sub['id']
             ids2, _tries, _wait = api.wait_for_deployment_finish(folder_path, file_id=sub['id'], verbose=True)
             assert ids2[1] == sub['id']
 
         finally:
-            assert not root or not api.delete_file_or_folder(root_dir + '/', empty_trash=True)
+            assert not root or not api.delete_file_or_folder(root_dir + "/", empty_trash=True)
 
     def test_cred_info_dict(self):
         cred_dict = json.loads(read_bin_file('.service_account_credentials.json'))
@@ -273,17 +273,17 @@ class TestGoodriveApiIntegration:
     def test_folder_file_ids(self, drive_api_path_id_content):
         api, remote_path, create_id, content = drive_api_path_id_content
 
-        dir1_id, sub1_id = api.folder_file_ids('/' + tst_remote_root + '/')
+        dir1_id, sub1_id = api.folder_file_ids("/" + tst_remote_root + "/")
         assert not api.error_message
         assert dir1_id == tst_google_drive_root_id
         assert sub1_id
 
-        dir1_id, sub1_id = api.folder_file_ids(tst_remote_root + '/')   # path relative to root folder
+        dir1_id, sub1_id = api.folder_file_ids(tst_remote_root + "/")   # path relative to root folder
         assert not api.error_message
         assert dir1_id == tst_google_drive_root_id
         assert sub1_id
 
-        dir1_id2, sub1_id2 = api.folder_file_ids(tst_remote_root + '/', folder_id=tst_google_drive_root_id)
+        dir1_id2, sub1_id2 = api.folder_file_ids(tst_remote_root + "/", folder_id=tst_google_drive_root_id)
         assert not api.error_message
         assert dir1_id2 == tst_google_drive_root_id
         assert sub1_id2 == sub1_id
@@ -293,12 +293,12 @@ class TestGoodriveApiIntegration:
         assert dir2_id == sub1_id
         assert sub2_id
 
-        dir2_id2, sub2_id2 = api.folder_file_ids(tst_remote_sub1 + '/', folder_id=sub1_id)
+        dir2_id2, sub2_id2 = api.folder_file_ids(tst_remote_sub1 + "/", folder_id=sub1_id)
         assert not api.error_message
         assert dir2_id2 == dir2_id
         assert sub2_id2 == sub2_id
 
-        dir3_id, fil3_id = api.folder_file_ids(tst_remote_sub2 + '/', folder_id=sub2_id)
+        dir3_id, fil3_id = api.folder_file_ids(tst_remote_sub2 + "/", folder_id=sub2_id)
         assert not api.error_message
         assert dir3_id == sub2_id
         assert fil3_id
