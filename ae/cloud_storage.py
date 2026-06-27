@@ -17,7 +17,7 @@ import os
 import time
 
 from abc import ABC, abstractmethod
-from typing import Any, Optional, Type, Union
+from typing import Any
 
 import requests
 
@@ -35,7 +35,7 @@ from ae.base import os_path_basename, os_path_isfile, os_path_join, read_bin_fil
 from ae.app_log import ErrorMsgMixin                                                            # type: ignore
 
 
-__version__ = '0.3.13'
+__version__ = '0.3.14'
 
 
 _registered_csh_classes: dict[str, type['CshApiBase']] = {}
@@ -58,7 +58,7 @@ class CshApiBase(ErrorMsgMixin, ABC):
         _registered_csh_classes[cls.__name__[:-3]] = cls
 
     @abstractmethod
-    def deployed_file_content(self, file_path: str) -> Optional[bytes]:
+    def deployed_file_content(self, file_path: str) -> bytes | None:
         """ determine the file content of a file deployed to a server.
 
         :param file_path:       path of a deployed file relative to the host root.
@@ -86,7 +86,7 @@ class CshApiBase(ErrorMsgMixin, ABC):
         """
 
 
-def csh_api_class(csh_id: str) -> Type[CshApiBase]:
+def csh_api_class(csh_id: str) -> type[CshApiBase]:
     """ determine from the specified cloud storage host id the associated api class
 
     :param csh_id:              id of the cloud storage api class.
@@ -148,7 +148,7 @@ class DigiApi(CshApiBase):
 
         return self.error_message
 
-    def _request(self, method: str, slug: str, path: str, **kwargs) -> Optional[requests.Response]:
+    def _request(self, method: str, slug: str, path: str, **kwargs) -> requests.Response | None:
         url = self.base_url + slug
         kwargs['params'] = {'path': os_path_join(self.root_folder, path.lstrip("/"))}   # == root + "/" if path == "/"
         try:
@@ -173,7 +173,7 @@ class DigiApi(CshApiBase):
         res = self._request('delete', self.files_mount_id + 'remove', file_path)
         return "" if res else self.error_message
 
-    def deployed_file_content(self, file_path: str) -> Optional[bytes]:
+    def deployed_file_content(self, file_path: str) -> bytes | None:
         """ determine the file content of a file deployed to a server.
 
         :param file_path:       path of a deployed file relative to the host root path.
@@ -222,7 +222,7 @@ class DigiApi(CshApiBase):
                             )                       # res.json()[0]['name'] contains file name
         return file_path if res else ""
 
-    def list_dir(self, folder_path: str) -> Optional[list[str]]:
+    def list_dir(self, folder_path: str) -> list[str] | None:
         """ determine files and folders in the specified folder.
 
         :param folder_path:     path to the folder (relative to the host root folder) to determine items of.
@@ -265,7 +265,7 @@ class GoodriveApi(CshApiBase):
     GoodriveRequestReturnType = dict[str, Any]
 
     def __init__(self, root_folder: str = GOOGLE_DRIVE_DEFAULT_ROOT_FOLDER,
-                 sa_cred_dict: Optional[dict[str, Any]] = None, sa_cred_file: str = '.service_account_credentials.json',
+                 sa_cred_dict: dict[str, Any] | None = None, sa_cred_file: str = '.service_account_credentials.json',
                  oa_cred_file: str = '.oauth2_credentials.json', **csh_args):
         """ initialize an instance to access the Google Drive via API.
 
@@ -305,8 +305,8 @@ class GoodriveApi(CshApiBase):
         }
         return self._request(self._files.create(body=file_metadata, fields="id, mimeType"))
 
-    def _oauth2_authenticate(self, cred_info: Union[dict, str], cached_cred_file_path: str = '.token.json'
-                             ) -> Optional[Credentials]:    # pragma: no cover
+    def _oauth2_authenticate(self, cred_info: dict | str, cached_cred_file_path: str = '.token.json'
+                             ) -> Credentials | None:    # pragma: no cover
         """ ALTERNATIVE EXPERIMENTAL OAuth2 authentication - missing unit tests """
         creds = None
 
@@ -342,7 +342,7 @@ class GoodriveApi(CshApiBase):
     def _files(self):
         return self.service.files()                                 # pylint: disable=no-member
 
-    def _service_account_authenticate(self, cred_info: Union[dict, str]) -> Optional[Credentials]:
+    def _service_account_authenticate(self, cred_info: dict | str) -> Credentials | None:
         if isinstance(cred_info, dict):
             return service_account.Credentials.from_service_account_info(cred_info, scopes=self.CRED_SCOPES)
         return service_account.Credentials.from_service_account_file(cred_info, scopes=self.CRED_SCOPES)
@@ -373,7 +373,7 @@ class GoodriveApi(CshApiBase):
 
         return self.error_message
 
-    def deployed_file_content(self, file_path: str) -> Optional[bytes]:
+    def deployed_file_content(self, file_path: str) -> bytes | None:
         """ determine the file content of a file deployed to a server.
 
         :param file_path:       path of a deployed file relative to the host root folder.
