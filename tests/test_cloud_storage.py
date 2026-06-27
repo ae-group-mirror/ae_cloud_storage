@@ -190,8 +190,8 @@ class TestGoodriveApi:
         with (patch.object(goo_api, '_request') as mock_req,
               patch.object(goo_api, '_create_folder') as mock_create):
             mock_req.side_effect = [
-                {'files': []},  # List 'sub'
-                {'files': [{'id': 'file_id', 'mimeType': 'text/plain'}]}  # List 'file.txt'
+                {'files': []},  # list 'sub'
+                {'files': [{'id': 'file_id', 'mimeType': 'text/plain'}]}  # list 'file.txt'
             ]
             mock_create.return_value = {'id': 'sub_id', 'mimeType': goo_api.FOLDER_MIMETYPE}
 

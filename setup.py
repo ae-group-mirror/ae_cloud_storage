@@ -82,7 +82,7 @@ setup_kwargs = {
     },
     'python_requires': '>=3.12',
     'url': 'https://gitlab.com/ae-group/ae_cloud_storage',
-    'version': '0.3.13',
+    'version': '0.3.14',
     'zip_safe': True,
 }
 
