@@ -1,15 +1,16 @@
 """ distribute files to and retrieve them from cloud storage hosts.
 
 supported cloud storage hosts:
+
 * Google Drive: https://developers.google.com/drive/api/guides/about-sdk
 * DigiStorage: https://storage.rcs-rds.ro/help/developers
 
 a comparison of cloud storage hosts, including free ones, can be found here: https://comparisontabl.es/cloud-storage/
 (or https://docs.google.com/spreadsheets/d/1cEd65XDW3gBHnRsJ0rbq3V_B28mKySHiMPAZvArHiiA/).
 but not all of them offer an API, see some recommendations in:
+
 * https://blog.apilayer.com/5-cloud-storage-apis/#Filestack_API
 * https://www.jsonapi.co/public-api/category/Cloud%20Storage%20&%20File%20Sharing
-
 """
 import io
 import json
@@ -31,11 +32,13 @@ from googleapiclient.discovery import build                                     
 from googleapiclient.errors import HttpError                                                    # type: ignore
 from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload                           # type: ignore
 
-from ae.base import os_path_basename, os_path_isfile, os_path_join, read_bin_file               # type: ignore
+from ae.base import (                                                                           # type: ignore
+    URI_SVC_SEP,
+    os_path_basename, os_path_isfile, os_path_join, read_bin_file, write_file)
 from ae.app_log import ErrorMsgMixin                                                            # type: ignore
 
 
-__version__ = '0.3.14'
+__version__ = '0.3.15'
 
 
 _registered_csh_classes: dict[str, type['CshApiBase']] = {}
@@ -81,7 +84,9 @@ class CshApiBase(ErrorMsgMixin, ABC):
 
         :param file_path:       path relative to the host root of the file/folder to be deleted.
                                 to delete a folder a trailing slash character has to be added.
+
                                 .. note:: deleting a folder will also delete all files/folders underneath it.
+
         :return:                error message if deletion failed else on success an empty string.
         """
 
@@ -90,7 +95,7 @@ def csh_api_class(csh_id: str) -> type[CshApiBase]:
     """ determine from the specified cloud storage host id the associated api class
 
     :param csh_id:              id of the cloud storage api class.
-    :return:                    cloud storage api class if registered/declared, else the abstract class CshApiClass.
+    :return:                    cloud storage api class if registered, else the abstract class :class:`CshApiClass`.
     """
     return _registered_csh_classes.get(csh_id, CshApiBase)
 
@@ -110,7 +115,7 @@ class DigiApi(CshApiBase):
         """
         self.session = None  # prevent AttributeError exc in __del__() if invalid kwarg detected in super()-csh_args
         super().__init__(**csh_args)
-        self.base_url = 'https://digistorage.es'
+        self.base_url = f"https{URI_SVC_SEP}digistorage.es"
         self.session = requests.Session()
         token = self.session.get(self.base_url + '/token',
                                  headers={'X-Koofr-Email': email, 'X-Koofr-Password': password},
@@ -167,7 +172,9 @@ class DigiApi(CshApiBase):
         :param file_path:       path relative to the host root of the file/folder to be deleted.
                                 to delete a folder a trailing slash character has to be added.
                                 to delete the root folder pass an empty string or a single slash character.
+
                                 .. note:: ¡deleting a folder will also delete all files/folders underneath it!
+
         :return:                error message if deletion failed else on success an empty string.
         """
         res = self._request('delete', self.files_mount_id + 'remove', file_path)
@@ -257,7 +264,7 @@ class GoodriveApi(CshApiBase):
         pip install google-auth-oauthlib google-auth-httplib2 google-api-python-client
 
     """
-    CRED_SCOPES = ['https://www.googleapis.com/auth/drive']
+    CRED_SCOPES = [f"https{URI_SVC_SEP}www.googleapis.com/auth/drive"]
     FOLDER_MIMETYPE = 'application/vnd.google-apps.folder'
     GOOGLE_DRIVE_DEFAULT_ROOT_FOLDER = 'root'
     SKIPPED_FILES_MIMETYPE_PREFIX = 'application/vnd.google-apps.'
@@ -266,28 +273,32 @@ class GoodriveApi(CshApiBase):
 
     def __init__(self, root_folder: str = GOOGLE_DRIVE_DEFAULT_ROOT_FOLDER,
                  sa_cred_dict: dict[str, Any] | None = None, sa_cred_file: str = '.service_account_credentials.json',
-                 oa_cred_file: str = '.oauth2_credentials.json', **csh_args):
+                 oa_credentials: dict[str, Any] | str = '.oauth2_credentials.json',
+                 **csh_args):
         """ initialize an instance to access the Google Drive via API.
 
         :param root_folder:     Google Drive root folder id for this host api instance.
-        :param sa_cred_dict:    service account credentials dictionary (if passed has priority over credential files).
-        :param sa_cred_file:    service account credentials file path (if exists has priority over oa_cred_file).
-        :param oa_cred_file:    path to the OAuth 2.0 credentials file.
+        :param sa_cred_dict:    service account credentials dictionary (if specified then it has priority over
+                                the service account credential file specified in the :paramref:`.sa_cred_file` arg).
+        :param sa_cred_file:    service account credentials file path (if exists then it has priority over the
+                                OAuth2 credentials specified in the :paramref:`.oa_credentials` argument).
+        :param oa_credentials:  OAuth 2.0 account credentials dictionary or path to the OAuth 2.0 credentials file.
         """
         super().__init__(**csh_args)
         self.root_folder_id_default = root_folder
 
         if sa_cred_dict:
-            creds = self._service_account_authenticate(sa_cred_dict)
+            credentials = self._service_account_authenticate(sa_cred_dict)
         elif os_path_isfile(sa_cred_file):
-            creds = self._service_account_authenticate(sa_cred_file)
-        else:           # pragma: no cover
-            assert os_path_isfile(oa_cred_file), f"missing credential json file '{sa_cred_file}' or '{oa_cred_file}'"
-            creds = self._oauth2_authenticate(oa_cred_file)
+            credentials = self._service_account_authenticate(sa_cred_file)
+        else:
+            assert oa_credentials and (isinstance(oa_credentials, dict) or os_path_isfile(oa_credentials)), \
+                f"missing {sa_cred_dict=}, {sa_cred_file=} or OAuth2 credentials dict/json-file {oa_credentials=}"
+            credentials = self._oauth2_authenticate(oa_credentials)
 
-        self.service = build('drive', 'v3', credentials=creds)
+        self.service = build('drive', 'v3', credentials=credentials)
 
-    def _create_folder(self, folder_name: str, parent_id: str) -> GoodriveRequestReturnType:    # pragma: no cover
+    def _create_folder(self, folder_name: str, parent_id: str) -> GoodriveRequestReturnType:
         """ create a single folder under the parent folder (specified by id).
 
         .. note::
@@ -306,37 +317,36 @@ class GoodriveApi(CshApiBase):
         return self._request(self._files.create(body=file_metadata, fields="id, mimeType"))
 
     def _oauth2_authenticate(self, cred_info: dict | str, cached_cred_file_path: str = '.token.json'
-                             ) -> Credentials | None:    # pragma: no cover
-        """ ALTERNATIVE EXPERIMENTAL OAuth2 authentication - missing unit tests """
-        creds = None
+                             ) -> Credentials | None:
+        """ alternative OAuth2 authentication. """
+        credentials = None
 
         if os_path_isfile(cached_cred_file_path):   # if user authorization cache file exists then use it
             try:
-                creds = Credentials.from_authorized_user_file(cached_cred_file_path, self.CRED_SCOPES)
+                credentials = Credentials.from_authorized_user_file(cached_cred_file_path, self.CRED_SCOPES)
             except (HttpError, Exception):                          # pylint: disable=broad-except
-                creds = None
+                credentials = None
 
-        if creds and creds.refresh_token and (creds.expired or not creds.valid):
+        if credentials and credentials.refresh_token and (credentials.expired or not credentials.valid):
             try:
-                creds.refresh(Request())
+                credentials.refresh(Request())
             except (HttpError, Exception):                          # pylint: disable=broad-except
-                creds = None
+                credentials = None
 
-        if not creds or not creds.valid:
+        if not credentials or not credentials.valid:
             try:
                 if isinstance(cred_info, dict):
                     flow = InstalledAppFlow.from_client_config(cred_info, self.CRED_SCOPES)
                 else:
                     flow = InstalledAppFlow.from_client_secrets_file(cred_info, self.CRED_SCOPES)
-                creds = flow.run_local_server(port=0)
+                credentials = flow.run_local_server(port=0)
             except (HttpError, Exception):                          # pylint: disable=broad-except
-                creds = None
+                credentials = None
 
-        if creds:
-            with open(cached_cred_file_path, 'w') as token:         # pylint: disable=unspecified-encoding
-                token.write(creds.to_json())                        # save for next run
+        if credentials:
+            write_file(cached_cred_file_path, credentials.to_json(), make_dirs=True)  # cache/save for next run
 
-        return creds
+        return credentials
 
     @property
     def _files(self):
@@ -359,8 +369,10 @@ class GoodriveApi(CshApiBase):
 
         :param file_path:       path relative to the host root of the file/folder to be deleted.
                                 to delete a folder a trailing slash character has to be added.
+
                                 .. note:: deleting a folder will also delete all files/folders underneath it.
-        :param empty_trash:     pass True to empty the trash (definitely removing this and other deleted files).
+
+        :param empty_trash:     specify `True` to empty the trash (definitely removing this and other deleted files).
         :return:                error message if deletion failed else on success an empty string.
         """
         _folder_id, file_id = self.folder_file_ids(file_path)
@@ -369,7 +381,7 @@ class GoodriveApi(CshApiBase):
             if not self.error_message and empty_trash:
                 self._request(self._files.emptyTrash())
         else:
-            self.error_message = f"error in deleting {file_path=}"      # pragma: no cover
+            self.error_message = f"error in deleting {file_path=}"
 
         return self.error_message
 
@@ -381,7 +393,7 @@ class GoodriveApi(CshApiBase):
         """
         _folder_id, file_id = self.folder_file_ids(file_path)
         if not file_id:
-            return None     # pragma: no cover
+            return None
 
         try:
             request = self._files.get_media(fileId=file_id)
@@ -398,7 +410,7 @@ class GoodriveApi(CshApiBase):
             content = fh.read()
             fh.close()
 
-        except (HttpError, Exception) as exception:                 # pylint: disable=broad-except # pragma: no cover
+        except (HttpError, Exception) as exception:                 # pylint: disable=broad-except
             self.error_message = f"Raised {exception=} in retrieving content of {file_path=}"
             content = None
 
@@ -415,7 +427,6 @@ class GoodriveApi(CshApiBase):
         .. note::
             sometimes :meth:`.folder_file_ids` fails to see a deployed file directly after the deployment. on subsequent
             bulk deployments use :meth:`.wait_for_deployment_finish` to wait for finished/completed deployment.
-
         """
         if ':' in file_path:
             self.error_message = f"invalid character ':' in remote {file_path=}"
@@ -425,7 +436,7 @@ class GoodriveApi(CshApiBase):
         folder_id, file_id = self.folder_file_ids(file_path, create_folders=True)
         if file_id:
             file = self._request(self._files.update(fileId=file_id, media_body=media, fields="id"))
-        else:       # pragma: no cover
+        else:
             self.error_message = ""
             file_metadata = {"name": os_path_basename(file_path), "parents": [folder_id]}
             file = self._request(self._files.create(body=file_metadata, media_body=media, fields="id"))
@@ -441,9 +452,9 @@ class GoodriveApi(CshApiBase):
                                 __init__()).
 
                                 .. note::
-                                    MyDrive GOOGLE_DRIVE_DEFAULT_ROOT_FOLDER/'root' id is working for OAuth2,
+                                    the MyDrive GOOGLE_DRIVE_DEFAULT_ROOT_FOLDER/'root' id is working for OAuth2,
                                     but not for service accounts authentication.
-        :param create_folders:  pass True to create non-existing folders in the specified file path.
+        :param create_folders:  specify `True` to create non-existing folders in the specified file path.
         :return:                tuple of ids of the specified folder and of the basename file/folder.
                                 if the second tuple item is an empty string then an error occurred, because either
                                 the specified folder/file does not exist,
@@ -454,7 +465,6 @@ class GoodriveApi(CshApiBase):
             Google Doc/Sheet/.., then although the file id get returned, an error
             message get set (stating that Google Docs cannot be downloaded as files via
             :meth:`.deployed_file_content`).
-
         """
         if not folder_id:
             folder_id = self.root_folder_id_default
@@ -473,7 +483,7 @@ class GoodriveApi(CshApiBase):
             if items:
                 file_item = items[0]
             else:
-                if not create_folders or idx == last_idx and not is_folder:     # pragma: no cover
+                if not create_folders or idx == last_idx and not is_folder:
                     self.error_message = err_msg + f"(missing '{part}' in folder '{"/".join(path_parts[:idx])}')"
                     break       # return folder_id, ''
                 file_item = self._create_folder(part, folder_id)
@@ -483,7 +493,7 @@ class GoodriveApi(CshApiBase):
                     folder_id = file_item['id']
                 elif is_folder:
                     file_id = file_item['id']
-                else:           # pragma: no cover
+                else:
                     self.error_message = err_msg + f"(expected trailing slash after last folder item {part=})"
             elif idx == last_idx:
                 file_id = file_item['id']
@@ -500,9 +510,11 @@ class GoodriveApi(CshApiBase):
         """ wait until the deployment of a file or the creation of a folder is fully visible in the api.
 
         :param path:            path to the just created/deployed file/folder.
-        :param file_id:         pass file/folder id to wait for, to restrict the item specified in :paramref:`.path`.
+        :param file_id:         specify file/folder id to wait for, to restrict the item specified in :paramref:`.path`.
+                                if this argument value is empty or did not get specified, then the second id returned
+                                by :meth:`.folder_file_ids` will be used.
         :param max_tries:       number of tries/loops to check if the api can see the file/folder.
-        :param verbose:         pass True to print to the console for each try.
+        :param verbose:         specify `True` to print to the console for each try.
         :return:                3-tuple consisting of the return value of :meth:`.folder_file_ids`,
                                 the number of tries and the total amount of seconds waited.
         """
@@ -512,7 +524,7 @@ class GoodriveApi(CshApiBase):
             tries += 1
             ids = self.folder_file_ids(path)
             if (ids[1] == file_id if file_id else ids[1]) or tries == max_tries:
-                break           # pragma: no cover
-            if verbose:         # pragma: no cover
+                break
+            if verbose:
                 print(f"**** {path} not created after {tries} tries, time waiting: {time.time() - start} seconds")
         return ids, tries, time.time() - start

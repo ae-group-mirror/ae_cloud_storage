@@ -4,7 +4,6 @@ from unittest.mock import patch, MagicMock
 import pytest
 import requests
 
-
 from ae.cloud_storage import DigiApi, GoodriveApi, csh_api_class
 
 
@@ -136,27 +135,119 @@ def goo_api(goo_service):
 
 
 class TestGoodriveApi:
-    def test___init(self, goo_api):
-        assert isinstance(goo_api.root_folder_id_default, str) and goo_api.root_folder_id_default != ""
-        assert isinstance(goo_api.error_message, str) and goo_api.error_message == ""
-        assert isinstance(goo_api.service, MagicMock)
+    def test_create_folder(self, goo_api):
+        with patch.object(goo_api, '_request') as mock_refresh:
+            goo_api._create_folder('tst-folder', 'tst-parent-id')
+        mock_refresh.assert_called_once()
 
-    def test_init_with_sa_file(self):
-        with (patch('ae.cloud_storage.os_path_isfile', return_value=True) as _mock_isfile,
-              patch('ae.cloud_storage.service_account.Credentials.from_service_account_file') as mock_cred,
-              patch('ae.cloud_storage.build')):
-            GoodriveApi(sa_cred_file='dummy.json')
+    def test_delete_file_or_folder_and_empty_trash(self, goo_api, goo_service):
+        with (patch.object(goo_api, 'folder_file_ids', return_value=('f_id', 'target_id')),
+              patch.object(goo_api, '_request', return_value={})):
+            goo_api.delete_file_or_folder("path/to/delete", empty_trash=True)
 
-            mock_cred.assert_called_once_with('dummy.json', scopes=['https://www.googleapis.com/auth/drive'])
+            goo_service.files().delete.assert_called_with(fileId='target_id')
+            goo_service.files().emptyTrash.assert_called()
 
-    def test_request_exception(self, goo_api):
-        mock_prepared_call = MagicMock()
-        mock_prepared_call.execute.side_effect = Exception("tst-goo-api-exception")
+    def test_delete_file_or_folder_err(self, goo_api, goo_service):
+        assert not goo_api.error_message
+        with patch.object(goo_api, 'folder_file_ids', return_value=('f_id', '')):
+            goo_api.delete_file_or_folder("path/to/delete")
+        assert "error in deleting file_path=" in goo_api.error_message
 
-        result = goo_api._request(mock_prepared_call)
+    def test_deployed_file_content_chunk_download_success(self, goo_api):
+        with (patch.object(goo_api, 'folder_file_ids', return_value=('f_id', 'target_id')),
+              patch('ae.cloud_storage.MediaIoBaseDownload') as mock_dl_class):
+            mock_dl_instance = mock_dl_class.return_value                               # configure downloader mock
+            mock_dl_instance.next_chunk.side_effect = [(None, False), (None, True)]     # 1st: not done, 2nd call: done
 
-        assert result == {}
-        assert "HttpError" in goo_api.error_message
+            def fill_buffer(*_args, **_kwargs):                                         # mock data write to buffer
+                mock_dl_class.call_args[0][0].write(b"content_bytes")                   # 1st arg is the BytesIO handle
+                return None, True
+
+            mock_dl_instance.next_chunk.side_effect = fill_buffer
+
+            content = goo_api.deployed_file_content("file.txt")
+
+            assert content == b"content_bytes"
+
+    def test_deployed_file_content_err(self, goo_api):
+        with patch.object(goo_api, 'folder_file_ids', return_value=('f_id', '')):
+            assert goo_api.deployed_file_content("") is None
+
+    def test_deployed_file_content_exception(self, goo_api):
+        assert not goo_api.error_message
+        with patch.object(goo_api, 'folder_file_ids', return_value=('f_id', 'target_id')):
+            assert goo_api.deployed_file_content("") is None
+        assert goo_api.error_message
+
+    def test_deploy_file_update_err(self, goo_api, goo_service):
+        with (patch('ae.cloud_storage.MediaFileUpload'),
+              patch.object(goo_api, 'folder_file_ids', return_value=('f_id', '')),
+              patch.object(goo_api, '_request', return_value={'id': 'err_id'})):
+            res = goo_api.deploy_file("test.txt")
+
+            assert res == "err_id"
+            goo_service.files().create.assert_called()
+
+    def test_deploy_file_invalid_chars_in_path(self, goo_api):
+        res = goo_api.deploy_file("invalid:name.txt")
+
+        assert res == ""
+        assert "invalid character" in goo_api.error_message
+
+    def test_deploy_file_update_existing_file(self, goo_api, goo_service):
+        with (patch('ae.cloud_storage.MediaFileUpload'),
+              patch.object(goo_api, 'folder_file_ids', return_value=('f_id', 'existing_id')),
+              patch.object(goo_api, '_request', return_value={'id': 'existing_id'})):
+            res = goo_api.deploy_file("test.txt")
+
+            assert res == "existing_id"
+            goo_service.files().update.assert_called()
+
+    def test_folder_file_ids_err(self, goo_api):
+        assert not goo_api.error_message
+
+        with patch.object(goo_api, '_request', return_value={}):
+            goo_api.folder_file_ids("sub/folder/")
+
+        assert "invalid path " in goo_api.error_message
+        assert "sub/folder" in goo_api.error_message
+
+        goo_api.error_message = ""
+        assert not goo_api.error_message
+
+        with patch.object(goo_api, '_request', return_value={
+                'files': [{'id': 'file_id', 'mimeType': GoodriveApi.FOLDER_MIMETYPE}]}):
+            goo_api.folder_file_ids("sub/file.txt")
+
+        assert "expected trailing slash after last folder item" in goo_api.error_message
+
+        goo_api.error_message = ""
+
+        with patch.object(goo_api, '_request'):
+            goo_api.folder_file_ids("sub/folder/")
+
+        assert "invalid path " in goo_api.error_message
+        assert " is a file, not a folder" in goo_api.error_message
+
+    def test_folder_file_ids_recursive_creation(self, goo_api):
+        """ verify that folders are created if they don't exist and create_folders=True.
+        * step 1: list 'sub' -> returns empty
+        * step 2: _create_folder -> returns new folder id
+        * step 3: list 'file.txt' -> returns file id
+        """
+        with (patch.object(goo_api, '_request') as mock_req,
+              patch.object(goo_api, '_create_folder') as mock_create):
+            mock_req.side_effect = [
+                {'files': []},  # list 'sub'
+                {'files': [{'id': 'file_id', 'mimeType': 'text/plain'}]}  # list 'file.txt'
+            ]
+            mock_create.return_value = {'id': 'sub_id', 'mimeType': goo_api.FOLDER_MIMETYPE}
+
+            ids = goo_api.folder_file_ids("sub/file.txt", create_folders=True)
+
+            assert ids == ('sub_id', 'file_id')
+            mock_create.assert_called_once_with('sub', 'root')
 
     @pytest.mark.parametrize("path, list_returns, expected_ids, expected_err", [
         # file found immediately
@@ -181,72 +272,111 @@ class TestGoodriveApi:
             if expected_err:
                 assert expected_err in goo_api.error_message
 
-    def test_folder_file_ids_recursive_creation(self, goo_api):
-        """ verify that folders are created if they don't exist and create_folders=True.
-        * step 1: list 'sub' -> returns empty
-        * step 2: _create_folder -> returns new folder id
-        * step 3: list 'file.txt' -> returns file id
-        """
-        with (patch.object(goo_api, '_request') as mock_req,
-              patch.object(goo_api, '_create_folder') as mock_create):
-            mock_req.side_effect = [
-                {'files': []},  # list 'sub'
-                {'files': [{'id': 'file_id', 'mimeType': 'text/plain'}]}  # list 'file.txt'
-            ]
-            mock_create.return_value = {'id': 'sub_id', 'mimeType': goo_api.FOLDER_MIMETYPE}
+    def test_init(self, goo_api):
+        assert isinstance(goo_api.root_folder_id_default, str) and goo_api.root_folder_id_default != ""
+        assert isinstance(goo_api.error_message, str) and goo_api.error_message == ""
+        assert isinstance(goo_api.service, MagicMock)
 
-            ids = goo_api.folder_file_ids("sub/file.txt", create_folders=True)
+    def test_init_raise_assertation_error(self):
+        with pytest.raises(AssertionError):
+            GoodriveApi(sa_cred_file="", oa_credentials="")
 
-            assert ids == ('sub_id', 'file_id')
-            mock_create.assert_called_once_with('sub', 'root')
+        with pytest.raises(AssertionError):
+            GoodriveApi(sa_cred_file="missing Service Account credentials file name",
+                        oa_credentials="missing OAuth credentials file name")
 
-    def test_deploy_file_update_existing_file(self, goo_api, goo_service):
-        with (patch('ae.cloud_storage.MediaFileUpload'),
-              patch.object(goo_api, 'folder_file_ids', return_value=('f_id', 'existing_id')),
-              patch.object(goo_api, '_request', return_value={'id': 'existing_id'})):
-            res = goo_api.deploy_file("test.txt")
+    def test_init_with_sa_file(self):
+        with (patch('ae.cloud_storage.os_path_isfile', return_value=True),
+              patch('ae.cloud_storage.service_account.Credentials.from_service_account_file') as mock_cred,
+              patch('ae.cloud_storage.build') as mock_build):
+            api = GoodriveApi(sa_cred_file='dummy.json')
 
-            assert res == "existing_id"
-            goo_service.files().update.assert_called()
+        mock_cred.assert_called_once_with('dummy.json', scopes=api.CRED_SCOPES)
+        mock_build.assert_called_once_with('drive', 'v3', credentials=mock_cred.return_value)
 
-    def test_deploy_file_invalid_chars_in_path(self, goo_api):
-        res = goo_api.deploy_file("invalid:name.txt")
+    def test_init_with_oauth2(self):
+        with (patch('ae.cloud_storage.os_path_isfile', lambda _fn: _fn in ('.oauth2_credentials.json', '.token.json')),
+              patch('ae.cloud_storage.Credentials.from_authorized_user_file') as mock_cred,
+              patch('ae.cloud_storage.InstalledAppFlow.from_client_secrets_file') as mock_flow,
+              patch('ae.cloud_storage.write_file') as mock_cache,
+              patch('ae.cloud_storage.build') as mock_build):
+            mock_cred.return_value.valid = False
+            api = GoodriveApi()
 
-        assert res == ""
-        assert "invalid character" in goo_api.error_message
+        mock_cred.assert_called_once_with('.token.json', api.CRED_SCOPES)
+        mock_cred.return_value.refresh.assert_called()
+        mock_flow.assert_called_once_with('.oauth2_credentials.json', api.CRED_SCOPES)
+        mock_cache.assert_called_once_with('.token.json', mock_flow.return_value.run_local_server().to_json(),
+                                           make_dirs=True)
+        mock_build.assert_called_once_with('drive', 'v3', credentials=mock_flow.return_value.run_local_server())
 
-    def test_delete_file_and_empty_trash(self, goo_api, goo_service):
-        with (patch.object(goo_api, 'folder_file_ids', return_value=('f_id', 'target_id')),
-              patch.object(goo_api, '_request', return_value={})):
-            goo_api.delete_file_or_folder("path/to/delete", empty_trash=True)
+    def test_init_with_oauth2_catch_exceptions(self):
+        tst_exc = Exception("oauth2 unit test exception")
 
-            goo_service.files().delete.assert_called_with(fileId='target_id')
-            goo_service.files().emptyTrash.assert_called()
+        with (patch('ae.cloud_storage.os_path_isfile', lambda _fn: _fn in ('.oauth2_credentials.json', '.token.json')),
+              patch('ae.cloud_storage.Credentials.from_authorized_user_file', side_effect=tst_exc) as mock_cred,
+              patch('ae.cloud_storage.InstalledAppFlow.from_client_secrets_file', side_effect=tst_exc) as mock_flow,
+              patch('ae.cloud_storage.write_file') as mock_cache,
+              patch('ae.cloud_storage.build') as mock_build):
+            mock_cred.return_value.valid = False
+            api = GoodriveApi()
 
-    def test_deployed_file_content_chunk_download_success(self, goo_api):
-        with (patch.object(goo_api, 'folder_file_ids', return_value=('f_id', 'target_id')),
-              patch('ae.cloud_storage.MediaIoBaseDownload') as mock_dl_class):
-            mock_dl_instance = mock_dl_class.return_value                               # configure downloader mock
-            mock_dl_instance.next_chunk.side_effect = [(None, False), (None, True)]     # 1st: not done, 2nd call: done
+        mock_cred.assert_called_once_with('.token.json', api.CRED_SCOPES)
+        mock_cred.return_value.refresh.assert_not_called()
+        mock_flow.assert_called_once_with('.oauth2_credentials.json', api.CRED_SCOPES)
+        mock_cache.assert_not_called()
+        mock_build.assert_called_once_with('drive', 'v3', credentials=None)
 
-            def fill_buffer(*_args, **_kwargs):                                         # mock data write to buffer
-                mock_dl_class.call_args[0][0].write(b"content_bytes")                   # 1st arg is the BytesIO handle
-                return None, True
+        with (patch('ae.cloud_storage.os_path_isfile', lambda _fn: _fn in ('.oauth2_credentials.json', '.token.json')),
+              patch('ae.cloud_storage.Credentials.from_authorized_user_file') as mock_cred,
+              patch('ae.cloud_storage.Request', side_effect=tst_exc),
+              patch('ae.cloud_storage.InstalledAppFlow.from_client_secrets_file') as mock_flow,
+              patch('ae.cloud_storage.write_file') as mock_cache,
+              patch('ae.cloud_storage.build') as mock_build):
+            mock_cred.return_value.valid = False
+            api = GoodriveApi()
 
-            mock_dl_instance.next_chunk.side_effect = fill_buffer
+        mock_cred.assert_called_once_with('.token.json', api.CRED_SCOPES)
+        mock_cred.return_value.refresh.assert_not_called()
+        mock_flow.assert_called_once_with('.oauth2_credentials.json', api.CRED_SCOPES)
+        mock_cache.assert_called()
+        # mock_flow() == mock_flow.return_value
+        mock_build.assert_called_once_with('drive', 'v3', credentials=mock_flow().run_local_server(port=0))
 
-            content = goo_api.deployed_file_content("file.txt")
+    def test_init_with_oauth2_with_cred_dict(self):
+        with (patch('ae.cloud_storage.os_path_isfile', lambda _fn: _fn in ('.oauth2_credentials.json', '.token.json')),
+              patch('ae.cloud_storage.Credentials.from_authorized_user_file') as mock_cred,
+              patch('ae.cloud_storage.InstalledAppFlow.from_client_config') as mock_flow,
+              patch('ae.cloud_storage.write_file') as mock_cache,
+              patch('ae.cloud_storage.build') as mock_build):
+            mock_cred.return_value.valid = False
+            oa_creds = {'tst-cred-key': 'tst-cred-val'}
+            api = GoodriveApi(oa_credentials=oa_creds)
 
-            assert content == b"content_bytes"
+        mock_cred.assert_called_once_with('.token.json', api.CRED_SCOPES)
+        mock_cred.return_value.refresh.assert_called()
+        mock_flow.assert_called_once_with(oa_creds, api.CRED_SCOPES)
+        mock_cache.assert_called_once_with('.token.json', mock_flow.return_value.run_local_server().to_json(),
+                                           make_dirs=True)
+        mock_build.assert_called_once_with('drive', 'v3', credentials=mock_flow.return_value.run_local_server())
+
+    def test_request_exception(self, goo_api):
+        mock_prepared_call = MagicMock()
+        mock_prepared_call.execute.side_effect = Exception("tst-goo-api-exception")
+
+        result = goo_api._request(mock_prepared_call)
+
+        assert result == {}
+        assert "HttpError" in goo_api.error_message
 
     def test_wait_for_deployment_finish_polling(self, goo_api):
         with (patch.object(goo_api, 'folder_file_ids') as mock_ids,
-              patch('time.time', side_effect=[100, 105])):  # mock start and end time
+              patch('ae.cloud_storage.time.time', side_effect=[0] + [69] * 999)):  # 1 start + 999 end times (verbose)
 
             mock_ids.side_effect = [('root', ''), ('root', ''), ('root', 'found_id')]   # 1st 2 tries return no file_id
 
-            ids, tries, duration = goo_api.wait_for_deployment_finish("path", file_id="found_id")
+            ids, tries, duration = goo_api.wait_for_deployment_finish("path", file_id="found_id", verbose=True)
 
             assert tries == 3
             assert ids[1] == "found_id"
-            assert duration == 5
+            assert duration in (0, 69)
