@@ -36,7 +36,7 @@ from ae.base import (                                                           
 from ae.app_log import ErrorMsgMixin                                                            # type: ignore
 
 
-__version__ = '0.3.16'
+__version__ = '0.3.17'
 
 
 _registered_csh_classes: dict[str, type['CshApiBase']] = {}

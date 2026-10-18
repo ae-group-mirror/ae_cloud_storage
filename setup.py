@@ -55,6 +55,7 @@ setup_kwargs: dict[str, Any] = {
         'types-requests',
         'ae_base',
         'ae_app_log',
+        'ae_system',
     ],
     'keywords': [
         'configuration',
@@ -80,7 +81,7 @@ setup_kwargs: dict[str, Any] = {
     },
     'python_requires': '>=3.12',
     'url': 'https://gitlab.com/ae-group/ae_cloud_storage',
-    'version': '0.3.16',
+    'version': '0.3.17',
     'zip_safe': True,
 }
 
