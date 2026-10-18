@@ -14,7 +14,6 @@ but not all of them offer an API, see some recommendations in:
 """
 import io
 import json
-import os
 import time
 
 from abc import ABC, abstractmethod
@@ -33,12 +32,11 @@ from googleapiclient.errors import HttpError                                    
 from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload                           # type: ignore
 
 from ae.base import (                                                                           # type: ignore
-    URI_SVC_SEP,
-    os_path_basename, os_path_isfile, os_path_join, read_bin_file, write_file)
+    os_path_basename, os_path_isfile, os_path_join, os_path_split, read_bin_file, write_file)
 from ae.app_log import ErrorMsgMixin                                                            # type: ignore
 
 
-__version__ = '0.3.15'
+__version__ = '0.3.16'
 
 
 _registered_csh_classes: dict[str, type['CshApiBase']] = {}
@@ -65,7 +63,7 @@ class CshApiBase(ErrorMsgMixin, ABC):
         """ determine the file content of a file deployed to a server.
 
         :param file_path:       path of a deployed file relative to the host root.
-        :return:                file content as bytes or None if error occurred (check self.error_message).
+        :return:                file content as bytes or `None` if error occurred (check self.error_message).
         """
 
     @abstractmethod
@@ -115,7 +113,7 @@ class DigiApi(CshApiBase):
         """
         self.session = None  # prevent AttributeError exc in __del__() if invalid kwarg detected in super()-csh_args
         super().__init__(**csh_args)
-        self.base_url = f"https{URI_SVC_SEP}digistorage.es"
+        self.base_url = "https://digistorage.es"
         self.session = requests.Session()
         token = self.session.get(self.base_url + '/token',
                                  headers={'X-Koofr-Email': email, 'X-Koofr-Password': password},
@@ -141,7 +139,7 @@ class DigiApi(CshApiBase):
         walk_path = ''
         for part in folder_path.strip("/").split("/"):
             walk_path += "/" + part
-            parent_path, folder_name = os.path.split(walk_path)
+            parent_path, folder_name = os_path_split(walk_path)
             entry = [_ for _ in self.list_dir(parent_path) or [] if _.endswith("/")]
             if folder_name + "/" not in entry:
                 res = self._request('post', self.files_mount_id + 'folder', parent_path,
@@ -184,7 +182,7 @@ class DigiApi(CshApiBase):
         """ determine the file content of a file deployed to a server.
 
         :param file_path:       path of a deployed file relative to the host root path.
-        :return:                file content as bytes or None if error occurred (check self.error_message).
+        :return:                file content as bytes or `None` if error occurred (check self.error_message).
         """
         res = self._request('get', '/content' + self.files_mount_id + 'get', file_path)
         if res:
@@ -213,7 +211,7 @@ class DigiApi(CshApiBase):
             self.error_message = f"error reading the source file '{source_path}'"
             return ""
 
-        path, file = os.path.split(file_path)
+        path, file = os_path_split(file_path)
 
         items = self.list_dir(path)
         if items is None:
@@ -234,7 +232,7 @@ class DigiApi(CshApiBase):
 
         :param folder_path:     path to the folder (relative to the host root folder) to determine items of.
         :return:                list of files/folders names in the specified folder (sub-folders have a trailing slash)
-                                or None if the folder does not exist.
+                                or `None` if the folder does not exist.
         """
         res = self._request('get', self.files_mount_id + 'list', folder_path)
         if res and res.ok:
@@ -264,7 +262,7 @@ class GoodriveApi(CshApiBase):
         pip install google-auth-oauthlib google-auth-httplib2 google-api-python-client
 
     """
-    CRED_SCOPES = [f"https{URI_SVC_SEP}www.googleapis.com/auth/drive"]
+    CRED_SCOPES = ["https://www.googleapis.com/auth/drive"]
     FOLDER_MIMETYPE = 'application/vnd.google-apps.folder'
     GOOGLE_DRIVE_DEFAULT_ROOT_FOLDER = 'root'
     SKIPPED_FILES_MIMETYPE_PREFIX = 'application/vnd.google-apps.'
@@ -360,7 +358,7 @@ class GoodriveApi(CshApiBase):
     def _request(self, prepared_call: Any) -> GoodriveRequestReturnType:
         try:
             return prepared_call.execute()
-        except (HttpError, Exception) as ex:                                    # pylint: disable=broad-except
+        except (HttpError, Exception) as ex:                        # pylint: disable=broad-except
             self.error_message = f"HttpError {ex} executing {prepared_call=}"
             return {}
 
@@ -389,7 +387,7 @@ class GoodriveApi(CshApiBase):
         """ determine the file content of a file deployed to a server.
 
         :param file_path:       path of a deployed file relative to the host root folder.
-        :return:                file content as bytes or None if error occurred (check self.error_message).
+        :return:                file content as bytes or `None` if error occurred (check self.error_message).
         """
         _folder_id, file_id = self.folder_file_ids(file_path)
         if not file_id:
@@ -514,7 +512,7 @@ class GoodriveApi(CshApiBase):
                                 if this argument value is empty or did not get specified, then the second id returned
                                 by :meth:`.folder_file_ids` will be used.
         :param max_tries:       number of tries/loops to check if the api can see the file/folder.
-        :param verbose:         specify `True` to print to the console for each try.
+        :param verbose:         specify `True` to print to the console for each retry.
         :return:                3-tuple consisting of the return value of :meth:`.folder_file_ids`,
                                 the number of tries and the total amount of seconds waited.
         """
@@ -526,5 +524,5 @@ class GoodriveApi(CshApiBase):
             if (ids[1] == file_id if file_id else ids[1]) or tries == max_tries:
                 break
             if verbose:
-                print(f"**** {path} not created after {tries} tries, time waiting: {time.time() - start} seconds")
+                print(f" ###  {path=} not created after {tries} tries, time waiting: {time.time() - start} seconds")
         return ids, tries, time.time() - start

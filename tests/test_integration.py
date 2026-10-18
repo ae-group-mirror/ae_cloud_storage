@@ -6,7 +6,7 @@ import pytest
 
 from conftest import skip_gitlab_ci
 
-from ae.base import os_path_join, read_bin_file
+from ae.base import os_path_dirname, os_path_join, os_path_split, read_bin_file
 from ae.system import load_dotenvs
 
 
@@ -126,7 +126,7 @@ class TestDigiApiIntegration:
         api.error_message = ""
         invalid_empty_dir_name = "/tst_root//tst_sub//tst_file.xxx"
         assert api.deploy_file(invalid_empty_dir_name, source_path=tst_source_path) == ""
-        assert os.path.split(invalid_empty_dir_name)[0] in api.error_message
+        assert os_path_split(invalid_empty_dir_name)[0] in api.error_message
 
     def test_deploy_file_update(self, digi_api_path_content):
         api, remote_path, content = digi_api_path_content
@@ -134,7 +134,7 @@ class TestDigiApiIntegration:
         assert api.deploy_file(remote_path, source_path=tst_source_path) == remote_path
         assert api.error_message == ""
 
-        dir_list = api.list_dir(os.path.dirname(remote_path))
+        dir_list = api.list_dir(os_path_dirname(remote_path))
         assert dir_list
         assert dir_list[0] == tst_remote_file
 
@@ -218,7 +218,7 @@ class TestGoodriveApiIntegration:
             assert sub['id']
             assert sub['mimeType'] == GoodriveApi.FOLDER_MIMETYPE
 
-            folder_path = os.path.join(root_dir, sub_dir) + "/"
+            folder_path = os_path_join(root_dir, sub_dir) + "/"
             ids, _tries, _wait = api.wait_for_deployment_finish(folder_path, verbose=True)
             assert ids[1] == sub['id']
             ids2, _tries, _wait = api.wait_for_deployment_finish(folder_path, file_id=sub['id'], verbose=True)
