@@ -88,7 +88,7 @@ def test_import():
     assert GoodriveApi
 
 
-# always run integration tests locally (@pytest.mark.integration would only enable them if RUN_INTEGRATION_TESTS is set)
+# @pytest.mark.integration  # uncomment to only run integration tests if env var RUN_INTEGRATION_TESTS is set
 @skip_gitlab_ci
 class TestDigiApiIntegration:
     def test_create_dirs_invalid_folder_name(self):

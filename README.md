@@ -1,16 +1,16 @@
 <!-- THIS FILE IS EXCLUSIVELY MAINTAINED by the project ae.ae v0.3.110 -->
 <!-- THIS FILE IS EXCLUSIVELY MAINTAINED by the project aedev.namespace_root_tpls v0.3.33 -->
-# cloud_storage 0.3.17
+# cloud_storage 0.4.17
 
 [![GitLab develop](https://img.shields.io/gitlab/pipeline/ae-group/ae_cloud_storage/develop?logo=python)](
     https://gitlab.com/ae-group/ae_cloud_storage)
 [![LatestPyPIrelease](
-    https://img.shields.io/gitlab/pipeline/ae-group/ae_cloud_storage/release0.3.17?logo=python)](
-    https://gitlab.com/ae-group/ae_cloud_storage/-/tree/release0.3.17)
+    https://img.shields.io/gitlab/pipeline/ae-group/ae_cloud_storage/release0.4.17?logo=python)](
+    https://gitlab.com/ae-group/ae_cloud_storage/-/tree/release0.4.17)
 [![PyPIVersions](https://img.shields.io/pypi/v/ae_cloud_storage)](
     https://pypi.org/project/ae-cloud-storage/#history)
 
->ae namespace module portion cloud_storage: distribute files to and retrieve them from cloud storage hosts..
+>ae namespace module portion cloud_storage: distribute files to and retrieve them from cloud storage hosts.
 
 [![Coverage](https://ae-group.gitlab.io/ae_cloud_storage/coverage.svg)](
     https://ae-group.gitlab.io/ae_cloud_storage/coverage/index.html)

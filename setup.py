@@ -1,5 +1,5 @@
-# THIS FILE IS EXCLUSIVELY MAINTAINED by the project aedev.project_tpls v0.3.106
-""" setup of ae namespace module portion cloud_storage: distribute files to and retrieve them from cloud storage hosts.. """
+# THIS FILE IS EXCLUSIVELY MAINTAINED by the project aedev.project_tpls v0.3.109
+""" setup of ae namespace module portion cloud_storage: distribute files to and retrieve them from cloud storage hosts. """
 import pathlib
 import sys
 from typing import Any
@@ -12,7 +12,7 @@ setup_kwargs: dict[str, Any] = {
     'author': 'AndiEcker',
     'author_email': 'aecker2@gmail.com',
     'classifiers': [
-        'Development Status :: 3 - Alpha',
+        'Development Status :: 4 - Beta',
         'Natural Language :: English',
         'Operating System :: OS Independent',
         'Programming Language :: Python',
@@ -21,7 +21,7 @@ setup_kwargs: dict[str, Any] = {
         'Topic :: Software Development :: Libraries :: Python Modules',
         'Typing :: Typed',
     ],
-    'description': 'ae namespace module portion cloud_storage: distribute files to and retrieve them from cloud storage hosts.',
+    'description': 'ae namespace module portion cloud_storage: distribute files to and retrieve them from cloud storage hosts',
     'extras_require': {
         'dev': [
             'aedev_project_tpls',
@@ -48,8 +48,8 @@ setup_kwargs: dict[str, Any] = {
         ],
     },
     'install_requires': [
+        'google-auth',
         'google-auth-oauthlib',
-        'google-auth-httplib2',
         'google-api-python-client',
         'requests',
         'types-requests',
@@ -81,10 +81,10 @@ setup_kwargs: dict[str, Any] = {
     },
     'python_requires': '>=3.12',
     'url': 'https://gitlab.com/ae-group/ae_cloud_storage',
-    'version': '0.3.17',
+    'version': '0.4.17',
     'zip_safe': True,
 }
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     setuptools.setup(**setup_kwargs)
     ...
