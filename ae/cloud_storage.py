@@ -1,16 +1,8 @@
-""" distribute files to and retrieve them from cloud storage hosts.
+"""
+distribute files to and retrieve them from cloud storage hosts
+==============================================================
 
-supported cloud storage hosts:
-
-* Google Drive: https://developers.google.com/drive/api/guides/about-sdk
-* DigiStorage: https://storage.rcs-rds.ro/help/developers
-
-a comparison of cloud storage hosts, including free ones, can be found here: https://comparisontabl.es/cloud-storage/
-(or https://docs.google.com/spreadsheets/d/1cEd65XDW3gBHnRsJ0rbq3V_B28mKySHiMPAZvArHiiA/).
-but not all of them offer an API, see some recommendations in:
-
-* https://blog.apilayer.com/5-cloud-storage-apis/#Filestack_API
-* https://www.jsonapi.co/public-api/category/Cloud%20Storage%20&%20File%20Sharing
+check the section :ref:`cloud storage maintenance and usage` in the namespace documentation for more info.
 """
 import io
 import json
@@ -36,7 +28,7 @@ from ae.base import (                                                           
 from ae.app_log import ErrorMsgMixin                                                            # type: ignore
 
 
-__version__ = '0.3.17'
+__version__ = '0.4.17'
 
 
 _registered_csh_classes: dict[str, type['CshApiBase']] = {}
@@ -49,12 +41,18 @@ class CshApiBase(ErrorMsgMixin, ABC):
         """ cloud storage host api instantiation and argument check.
 
         :param csh_args:        individual arguments, like host root path and credentials, of a cloud storage host api.
+        :raises:                AssertionError if :paramref:`.csh_args` got invalid arguments (that are not recognized,
+                                and did not get removed from the inheriting classes).
         """
         super().__init__()
         assert not csh_args, f"abstract CshApiBase.__init__() got unrecognized kwargs: {csh_args}"
 
-    def __init_subclass__(cls):     #: base class to automatic map of cloud storage api classes declared in this module
-        super().__init_subclass__()
+    def __init_subclass__(cls, **kwargs):
+        """ automatic map of cloud storage api classes inheriting from this base class.
+
+        :raises:                AssertionError if the name of the inheriting class does not end with `'Api'`.
+        """
+        super().__init_subclass__(**kwargs)
         assert cls.__name__.endswith('Api')
         _registered_csh_classes[cls.__name__[:-3]] = cls
 
@@ -72,7 +70,7 @@ class CshApiBase(ErrorMsgMixin, ABC):
 
         :param file_path:       path (relative to the host root) and name of the file to be deployed (added or updated).
         :param source_path:     source path if differs from the destination path given in
-                                :paramref:`~deploy_file.file_path`.
+                                :paramref:`.file_path`.
         :return:                created/updated file path or empty string on error (see self.error_message for details).
         """
 
@@ -93,23 +91,20 @@ def csh_api_class(csh_id: str) -> type[CshApiBase]:
     """ determine from the specified cloud storage host id the associated api class
 
     :param csh_id:              id of the cloud storage api class.
-    :return:                    cloud storage api class if registered, else the abstract class :class:`CshApiClass`.
+    :return:                    cloud storage api class if registered, else the abstract class :class:`CshApiBase`.
     """
     return _registered_csh_classes.get(csh_id, CshApiBase)
 
 
 class DigiApi(CshApiBase):
-    """ upload, update, download and delete files from Digi Movil Storage.
-
-    the requests package is the only requirement of this class, which can be installed via `pip install requests`.
-    """
+    """ upload, update, download and delete files from Digi Movil Storage """
     def __init__(self, root_folder: str = "", email: str = "", password: str = "", **csh_args):
         """ DigiStorage host instantiation.
 
         :param root_folder:     host root folder name/path.
         :param email:           host account email address to authenticate.
         :param password:        host account password to authenticate.
-        :param csh_args:        generic cloud storage host arguments.
+        :param csh_args:        generic cloud storage host arguments (here only used to detect invalid arguments).
         """
         self.session = None  # prevent AttributeError exc in __del__() if invalid kwarg detected in super()-csh_args
         super().__init__(**csh_args)
@@ -195,7 +190,7 @@ class DigiApi(CshApiBase):
 
         :param file_path:       path (relative to the host root) and name of the file to be deployed (added or updated).
         :param source_path:     source path if differs from the destination path given in
-                                :paramref:`~deploy_file.file_path`.
+                                :paramref:`.file_path`.
         :return:                created/updated file path or empty string on error (see self.error_message for details).
         """
         if ':' in file_path:
@@ -246,22 +241,7 @@ class DigiApi(CshApiBase):
 
 
 class GoodriveApi(CshApiBase):
-    """ upload, update, download and delete files from a Google Drive.
-
-    .. note:: the Google Drive root folder (id) cannot be created programmatically; prepare before run the unit tests.
-
-    to prepare Google Drive host api instance (root folder and authentication), create in your console (at
-    https://console.cloud.google.com/apis/credentials?orgonly=true&project=oaio-project&supportedpurview=organizationId)
-    the credentials for a service account (or an OAuth 2.0 Client) and activate it for your Google Drive project.
-    then download the credential JSON file and store it, and specify its location in the instantiation of the class.
-
-    .. hint:: the Google ``API Keys`` cannot be used for Google Drive authentication.
-
-    to install the required packages run in your virtual environment the following command::
-
-        pip install google-auth-oauthlib google-auth-httplib2 google-api-python-client
-
-    """
+    """ upload, update, download and delete files from any Google Drive """
     CRED_SCOPES = ["https://www.googleapis.com/auth/drive"]
     FOLDER_MIMETYPE = 'application/vnd.google-apps.folder'
     GOOGLE_DRIVE_DEFAULT_ROOT_FOLDER = 'root'
@@ -281,6 +261,7 @@ class GoodriveApi(CshApiBase):
         :param sa_cred_file:    service account credentials file path (if exists then it has priority over the
                                 OAuth2 credentials specified in the :paramref:`.oa_credentials` argument).
         :param oa_credentials:  OAuth 2.0 account credentials dictionary or path to the OAuth 2.0 credentials file.
+        :param csh_args:        generic cloud storage host arguments (here only used to detect invalid arguments).
         """
         super().__init__(**csh_args)
         self.root_folder_id_default = root_folder
@@ -298,10 +279,6 @@ class GoodriveApi(CshApiBase):
 
     def _create_folder(self, folder_name: str, parent_id: str) -> GoodriveRequestReturnType:
         """ create a single folder under the parent folder (specified by id).
-
-        .. note::
-            sometimes :meth:`.folder_file_ids` fails to see a created folder after the deployment. on subsequent
-            bulk creations use :meth:`.wait_for_deployment_finish` to wait for finished/completed folder creation.
 
         :param folder_name:     name of the folder to create.
         :param parent_id:       id of the parent folder where to create a new folder underneath.
@@ -399,7 +376,7 @@ class GoodriveApi(CshApiBase):
             downloader = MediaIoBaseDownload(fh, request)               # chunksize=DEFAULT_CHUNK_SIZE
 
             while True:
-                # add callback or print(f"{int(status.progress() * 100)}% in downloading the file '{folder_path}' ... ")
+                # add callback or print(f"{int(status.progress() * 100)}% in downloading the file '{file_path}' ... ")
                 _status, done = downloader.next_chunk(num_retries=1)    # default: num_retries=0
                 if done:
                     break
@@ -418,13 +395,8 @@ class GoodriveApi(CshApiBase):
         """ add or update a binary file to the cloud storage host.
 
         :param file_path:       path (relative to the host root) and name of the file to be deployed (added or updated).
-        :param source_path:     source path if differs from the destination path given in
-                                :paramref:`~deploy_file.file_path`.
+        :param source_path:     source path if differs from the destination path given in :paramref:`.file_path`.
         :return:                created/updated file id or empty string on error (check self.error_message for details).
-
-        .. note::
-            sometimes :meth:`.folder_file_ids` fails to see a deployed file directly after the deployment. on subsequent
-            bulk deployments use :meth:`.wait_for_deployment_finish` to wait for finished/completed deployment.
         """
         if ':' in file_path:
             self.error_message = f"invalid character ':' in remote {file_path=}"
@@ -443,26 +415,14 @@ class GoodriveApi(CshApiBase):
     def folder_file_ids(self, file_path: str, folder_id: str = '', create_folders: bool = False) -> tuple[str, str]:
         """ convert Google Drive file path into the related folder and file ids.
 
-        :param file_path:       path of a file or folder, relative to the folder specified in
-                                :paramref:`~folder_file_ids.folder_id`.
-        :param folder_id:       Google Drive folder id of the root folder where :paramref:`~folder_file_ids.folder_path`
-                                is underneath of. if not passed then it defaults to the root folder (specified via
-                                __init__()).
-
-                                .. note::
-                                    the MyDrive GOOGLE_DRIVE_DEFAULT_ROOT_FOLDER/'root' id is working for OAuth2,
-                                    but not for service accounts authentication.
+        :param file_path:       path of a file or folder, relative to the folder specified in :paramref:`.folder_id`.
+        :param folder_id:       Google Drive folder id of the root folder where :paramref:`.file_path` is underneath
+                                of. if not passed then it defaults to the root folder (specified via __init__()).
         :param create_folders:  specify `True` to create non-existing folders in the specified file path.
         :return:                tuple of ids of the specified folder and of the basename file/folder.
                                 if the second tuple item is an empty string then an error occurred, because either
                                 the specified folder/file does not exist,
                                 or the specified basename ends with a slash, although it is a file.
-
-        .. note::
-            if :paramref:`~folder_file_ids.folder_path` specifies a Google Drive cloud mimetype, like
-            Google Doc/Sheet/.., then although the file id get returned, an error
-            message get set (stating that Google Docs cannot be downloaded as files via
-            :meth:`.deployed_file_content`).
         """
         if not folder_id:
             folder_id = self.root_folder_id_default

@@ -1,9 +1,9 @@
 # google-auth not explicitely needed, because is required by each of the 3 following Google packages
-google-auth-oauthlib
-google-auth-httplib2
-google-api-python-client
+google-auth                 # implicitly included, added to pass pjm reqs check
+google-auth-oauthlib        # includes also google-auth
+google-api-python-client    # includes also google-auth, google-auth-httplib2
 requests
 types-requests
 ae_base
 ae_app_log
-ae_system       # for integration tests
+ae_system                   # only needed for integration tests
